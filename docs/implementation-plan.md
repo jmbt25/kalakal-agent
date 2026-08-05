@@ -98,12 +98,80 @@ Standing rules:
   `tests/unit/` for each.
 - **Acceptance criteria:** every §6.2 contract exists with its invariants enforced
   by validators (e.g., `is_synthetic` must be true, `is_predictive` false, label
-  literal, micro/ppm ranges, UTC-only timestamps); edge calculation reproduces
-  documented examples exactly in integer arithmetic; the demo estimator is
-  bit-for-bit reproducible from recorded inputs.
-- **Tests and checks:** unit tests per contract (valid, invalid, boundary);
-  property-style tests for arithmetic (no floats anywhere in value paths —
-  asserted); estimator determinism test (same input → same output, digest match).
+  literal, micro/ppm ranges, UTC-only timestamps); `DecisionRecord` is conditional
+  by outcome path — exactly the three terminal shapes of
+  [architecture.md §6.2.10](architecture.md#6210-decisionrecord) validate
+  (pre-selection abstention with its two source variants, policy no-bet after
+  selection, completed proceed), model-level validators reject every
+  inconsistent conditional-field combination, and model-invocation metadata is
+  truthful — `invocation_status: "not_invoked"` records carry no model ID,
+  prompt version, responses, tokens, or model tool calls (absent, never
+  dummy-valued); `DecisionExplanation` enforces its source-conditional fields
+  (agent: `prompt_version` + model metadata ref, no template version;
+  orchestrator: `explanation_template_version`, no prompt version or model
+  metadata ref); the shared `DataQuality` block of
+  [architecture.md §6.2.12](architecture.md#6212-dataquality) distinguishes
+  structural invalidity (the `FIXTURE_INVALID` path) from explicitly incomplete
+  or conflicting evidence, with per-contract allowlists of conditionally
+  optional evidence fields, exact correspondence between absent/null allowlisted
+  fields and `missing_fields`, and typed, bounded conflicts; edge and fee
+  calculation reproduces the documented
+  [architecture.md §6.2.6](architecture.md#626-edgeassessment) worked example
+  exactly in integer arithmetic (conservative ceiling division for the synthetic
+  fee; out-of-range financial inputs rejected, never clamped); the demo estimator
+  enforces its field-specific input boundary (typed rejection when an
+  estimator-consumed field is missing or conflicted; acceptance when
+  `is_complete: false` stems only from non-estimator evidence; no substituted
+  defaults or invented values) and is bit-for-bit reproducible from recorded
+  inputs.
+- **Tests and checks:** unit tests per contract (valid, invalid, boundary),
+  written as parametrized pytest cases — no new dependency (e.g., Hypothesis) is
+  needed or added. Required coverage:
+  - both valid source variants of the pre-selection abstention shape (agent
+    variant with `invocation_status: "invoked"` and full model metadata;
+    orchestrator variant with reason `NO_VALID_CANDIDATES`,
+    `invocation_status: "not_invoked"`, and no model metadata), plus the valid
+    policy no-bet and completed-proceed shapes;
+  - rejection of every source/model-metadata mismatch: orchestrator source with
+    a model ID, prompt version, responses, tokens, or model tool calls; agent
+    source with `invocation_status: "not_invoked"`; agent source without the
+    required model metadata; orchestrator source with a reason code other than
+    `NO_VALID_CANDIDATES`; either variant containing a selected market or any
+    post-selection artifact;
+  - rejection of the remaining inconsistent conditional fields (e.g., a draft
+    with `no_bet` or `abstained`, `completed` without a draft, shape B or C
+    with `invocation_status: "not_invoked"`);
+  - `DecisionExplanation` conditional-field validation in both directions for
+    both sources;
+  - structural invalidity vs. explicitly incomplete data: malformed types,
+    invalid ranges, unknown fields, invalid timestamps, and broken provenance
+    rejected outright (never representable as incompleteness), while
+    structurally valid entities with declared `missing_fields`/`conflicts`
+    validate; `is_complete` consistency enforced in both directions;
+  - exact correspondence between absent/null allowlisted fields and
+    `missing_fields`: absent-but-undeclared and declared-but-present both
+    rejected; attempts to mark structural fields missing rejected; unknown and
+    duplicate field paths rejected;
+  - conflict typing: entries without a `field_path`, with an over-length
+    `description`, or with empty or unresolvable `evidence_refs` rejected;
+  - complete records with every conditionally optional estimator input present
+    (`is_complete: true`); incomplete records with genuinely absent declared
+    fields; conflicts-only incomplete records (all fields present, at least one
+    typed conflict, `is_complete: false`);
+  - demo estimator field-specific boundary: a missing estimator-consumed field
+    → typed rejection; a conflict on an estimator-consumed field → typed
+    rejection; only a non-estimator field missing → estimation succeeds using
+    the complete estimator inputs; only a non-estimator field conflicted →
+    estimation succeeds; neither rejection path substitutes defaults or invents
+    replacement values;
+  - fee ceiling-division behavior, including zero and boundary fee rates (`0`
+    and `1_000_000` ppm accepted; out-of-range rates rejected, not clamped);
+  - positive, zero, and negative gross and net edges as valid values;
+  - the exact §6.2.6 example: probability `650_000` ppm, ask `600_000`
+    micro-USD, fee rate `10_000` ppm → fee `6_000` micro-USD (ceiling division),
+    gross edge `50_000` ppm, net edge `44_000` ppm;
+  - integer-only inputs on all value paths, with float inputs rejected;
+  - estimator determinism (same input → same output and same `inputs_digest`).
 - **Explicit exclusions:** no post-MVP contracts (§6.3 stays documentation-only);
   no I/O, no Firestore, no model calls.
 - **Dependencies:** slice 1.
@@ -117,7 +185,8 @@ Standing rules:
   loads and validates it.
 - **Expected files:** `fixtures/<fixture_set_version>/*.json` (or `.yaml`) for the
   scenarios recommended in [architecture.md §8.1](architecture.md#81-interface):
-  clear-edge, thin-edge, conflicting-evidence, stale-data, outside-entry-band;
+  clear-edge, thin-edge, conflicting-evidence, stale-data, outside-entry-band,
+  no-valid-candidates;
   `src/kalakal/fixtures/repository.py`; `tests/unit/test_fixtures.py`.
 - **Acceptance criteria:** all shipped fixtures pass schema validation; every
   fixture entity is clearly synthetic (invented names, synthetic link domain,
@@ -167,12 +236,25 @@ Standing rules:
 - **Acceptance criteria:** all states and transitions of
   [architecture.md §7](architecture.md#7-run-state-machine) implemented, strictly
   forward, terminals correct; every scenario runs to its expected terminal
-  (`completed`/`abstained`/`failed`) with a fully assembled `DecisionRecord` or
-  `RunFailure`; the hard 60 s run deadline enforced; frozen `evaluation_time`
+  (`completed`/`abstained`/`failed`) with a `DecisionRecord` in the correct
+  terminal shape of
+  [architecture.md §6.2.10](architecture.md#6210-decisionrecord) or a
+  `RunFailure`; the candidate-eligibility filter of
+  [architecture.md §5.6](architecture.md#56-incomplete-conflicting-or-stale-input--abstention)
+  implemented — only candidates with complete, non-conflicting
+  estimator-consumed evidence reach the selector, and an all-ineligible
+  candidate set terminates before any selector invocation with the
+  orchestrator-variant pre-selection abstention
+  (`abstention_source: "orchestrator"`, reason `NO_VALID_CANDIDATES`,
+  `invocation_status: "not_invoked"`, no model metadata); the hard 60 s run
+  deadline enforced; frozen `evaluation_time`
   honored; the
   stale-during-execution path (§7.7) reachable in a test.
 - **Tests and checks:** state-machine transition tests (allowed + rejected
-  transitions); per-scenario end-to-end tests; timeout test with a fake clock;
+  transitions); per-scenario end-to-end tests; eligibility-filter tests (mixed
+  eligible/ineligible candidate sets expose only eligible candidates to the
+  selector; an all-ineligible set produces the orchestrator-variant abstention
+  with truthful `not_invoked` metadata); timeout test with a fake clock;
   idempotent memoization test (one recorded computation per market).
 - **Explicit exclusions:** no ADK, no Vertex, no Firestore, no HTTP; the selector
   stub is clearly marked test-only and is replaced (not toggled) in slice 6.
@@ -195,11 +277,21 @@ Standing rules:
   enforced (8 tool calls, 4 turns, 15 s per model call, 45 s agent/model budget, at
   most one repair or retry, budget-guarded fallback); malformed output triggers one
   repair attempt then safety-classed rejection (`MODEL_OUTPUT_REJECTED`); selection
-  outside the candidate set rejected; fallback-model use recorded per §5.9; prompt
+  outside the candidate set rejected; the §5.7 defense-in-depth cross-check
+  rejects, with `MODEL_OUTPUT_REJECTED`, a selection of a candidate whose
+  estimator-consumed input is missing or affected by a typed conflict —
+  exercised through a deliberate contract/tool mismatch seam, since normal §5.6
+  orchestration filters both candidate kinds before agent invocation;
+  fallback-model use recorded per §5.9; prompt
   templates carry `prompt_version`; a test measures and reports end-to-end
   fake-model pipeline latency, which must sit far inside the 45 s/60 s budgets.
 - **Tests and checks:** fake-model tests for: happy selection, abstention, invalid
-  JSON then repaired, invalid twice → failed run, out-of-set selection, tool-limit
+  JSON then repaired, invalid twice → failed run, out-of-set selection (kept as
+  its own case), selection of a candidate with a missing estimator-consumed
+  input → `MODEL_OUTPUT_REJECTED`, selection of a candidate with a typed
+  conflict on an estimator-consumed input → `MODEL_OUTPUT_REJECTED` (both
+  injected past the §5.6 eligibility filter through a deliberate contract/tool
+  mismatch seam), tool-limit
   breach, primary-model failure → fallback recorded, fallback failure →
   `MODEL_UNAVAILABLE`. Normal CI runs entirely on the fake client. One optional,
   manually triggered smoke test against real Vertex AI via ADC (not in normal CI)
@@ -214,21 +306,29 @@ Standing rules:
 
 ## Slice 7 — Explanation and simulated-draft generation
 
-- **Goal:** the explanation generator (agent qualitative output merged with
-  deterministic numbers) and the deterministic `SIMULATION — DO NOT POST` draft
-  template.
+- **Goal:** the explanation generator producing the source-aware
+  `DecisionExplanation` (agent qualitative output merged with deterministic
+  numbers, or the versioned deterministic template for orchestrator-sourced
+  pre-selection abstentions) and the deterministic `SIMULATION — DO NOT POST`
+  draft template.
 - **Expected files:** `src/kalakal/explain/generator.py`,
   `src/kalakal/draft/simulated.py`, `tests/unit/` for both.
-- **Acceptance criteria:** `AgentExplanation` assembled and validated (evidence
-  refs resolve; length caps; numbers only from deterministic contracts);
-  `SimulatedDiscordDraft` contains every mandatory element of
+- **Acceptance criteria:** `DecisionExplanation` assembled and validated for both
+  sources — `source: "agent"` with `prompt_version` and model metadata ref when
+  the agent ran; `source: "orchestrator"` with its deterministic
+  `explanation_template_version` (and no prompt version or model metadata ref)
+  for the pre-agent `NO_VALID_CANDIDATES` abstention — with evidence refs
+  resolving, length caps enforced, and numbers only from deterministic
+  contracts; `SimulatedDiscordDraft` contains every mandatory element of
   [architecture.md §6.2.9](architecture.md#629-simulateddiscorddraft) in one
   message, uses the synthetic link domain, and is produced iff the policy decision
-  is `proceed`; abstention runs produce a documented no-bet explanation instead.
+  is `proceed`; abstention and no-bet runs produce a documented
+  `DecisionExplanation` instead.
 - **Tests and checks:** template tests asserting each mandatory element's presence
   (label, event + side, synthetic link, ask price, confidence with non-predictive
   label, edge, `#nfa`, timestamp, expiry warning); one-draft-per-(run, market,
-  side) test; explanation-validation rejection tests.
+  side) test; explanation-validation rejection tests, including
+  source-conditional field mismatches for both `DecisionExplanation` sources.
 - **Explicit exclusions:** no Discord API, no real `jup.ag` links, no LLM-composed
   draft text.
 - **Dependencies:** slice 6.

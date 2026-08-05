@@ -264,14 +264,14 @@ Trust zones:
 | Bounded ADK agent | Single `LlmAgent`: selects among validated candidates or abstains; synthesizes qualitative context; produces the structured explanation input. | Model boundary. Read-only tools only; structured output enforced; output validated before use (§5). |
 | Synthetic fixture repository | Loads versioned synthetic scenario files shipped with the app; exposes them read-only; carries `fixture_set_version` and content digests. | Trusted storage of untrusted-shaped data: contents still pass validation before use. |
 | Schema-validation layer | Validates every fixture document and every model output against explicit typed schemas (§6); rejects incomplete, conflicting, malformed, or stale input with reason codes. | Boundary guard between fixtures/model and the core. Nothing reaches decision logic unvalidated. |
-| Candidate-market tools | `list_candidate_markets` — validated candidate summaries for the agent and UI. | Read-only; serves only validated data. |
+| Candidate-market tools | `list_candidate_markets` — eligible, validated candidate summaries for the agent and UI (eligibility filter of §5.6). | Read-only; serves only validated data. |
 | Match-context tools | `get_match_context`, `get_market_snapshot` — validated per-market context. | Read-only; serves only validated data. |
 | Probability-estimator interface | Typed interface returning `ProbabilityEstimate`; MVP binding is the deterministic demo estimator (§10), versioned and labeled non-predictive. | Trusted core. Pure function of validated inputs; no LLM involvement. |
 | Edge and fee calculator | Deterministic integer arithmetic: gross edge, versioned synthetic fee model, net edge, breakeven. | Trusted core. Pure; reproducible from recorded inputs. |
 | Policy and abstention engine | Applies versioned deterministic rules: entry band, minimum net edge, freshness, completeness, duplicate-run checks. Emits `PolicyDecision` with per-check results. | Trusted core; **final authority**. Runs outside the LLM; the LLM cannot override it. |
-| Explanation generator | Orchestrates the agent's qualitative explanation and merges it with deterministic numbers into `AgentExplanation`; numbers are rendered from deterministic contracts only, never parsed from prose. | Straddles core/model boundary; model text is validated, capped, and non-authoritative. |
+| Explanation generator | Produces the source-aware `DecisionExplanation` (§6.2.8): assembles the agent's qualitative output when the model ran (`source: "agent"`), or renders a versioned deterministic template for the pre-selection `NO_VALID_CANDIDATES` abstention (`source: "orchestrator"`); numbers are rendered from deterministic contracts only, never parsed from prose. | Straddles core/model boundary for agent-sourced narrative (validated, capped, non-authoritative); orchestrator-sourced narrative is deterministic core output. |
 | Simulated Discord-draft generator | Deterministic template producing `SimulatedDiscordDraft` with the mandatory `SIMULATION — DO NOT POST` labeling (§6.2.9). Not LLM-generated, so required fields cannot be omitted. | Trusted core. |
-| Decision-record validator | Validates the assembled `DecisionRecord` (completeness, version fields, reason codes, no forbidden content) before any Firestore write. | Last gate before persistence. |
+| Decision-record validator | Validates the assembled `DecisionRecord` (terminal-shape conformance and shape-conditional completeness per §6.2.10, version fields, reason codes, no forbidden content) before any Firestore write. | Last gate before persistence. |
 | Firestore audit repository | Creates the run document, writes progress markers, performs the single atomic terminal write, enforces idempotent creation. | Only the core writes; never the agent (§5.9). |
 | Observability adapter | Structured JSON logs with run correlation IDs; emits metric fields (§9.6); applies redaction rules. | Trusted core. |
 | Future Jupiter adapter boundary | Post-MVP: typed client over documented official Jupiter interfaces only (§11.1). Absent from the MVP codebase. | Planned; external calls quarantined behind contract-tested schemas. |
@@ -290,7 +290,7 @@ The LLM must never:
 
 The LLM may:
 
-- Select among validated candidate fixtures, or abstain.
+- Select among eligible validated candidate fixtures (§5.6), or abstain.
 - Request the bounded read-only tools in §5.1.
 - Synthesize qualitative context from validated data.
 - Explain validated deterministic calculations in natural language.
@@ -313,7 +313,7 @@ observe; they never raise into the model as free text.
 
 | Tool | Input | Output |
 |---|---|---|
-| `list_candidate_markets` | — | List of validated `CandidateMarket` summaries for the scenario |
+| `list_candidate_markets` | — | List of eligible, validated `CandidateMarket` summaries for the scenario (§5.6 eligibility filter applied) |
 | `get_match_context` | `market_id` | Validated `MatchContext` |
 | `get_market_snapshot` | `market_id` | Validated `MarketSnapshot` |
 | `get_edge_assessment` | `market_id` | Deterministically computed `ProbabilityEstimate` + `EdgeAssessment` (computed by the application on first call, memoized, recorded) |
@@ -395,24 +395,60 @@ require, so the pattern is proven before live adapters exist:
 
 ### 5.6 Incomplete, conflicting, or stale input → abstention
 
-- The schema-validation layer marks each fixture entity complete/incomplete and
-  fresh/stale (`valid_until` vs. the run's evaluation clock).
-- Incomplete or conflicting context for every candidate → the orchestrator abstains
-  before the agent is invoked (`NO_VALID_CANDIDATES`).
-- The agent is instructed to abstain on conflicting or insufficient evidence and has
-  a reason-code vocabulary for it.
-- Independently, the policy engine re-checks freshness and completeness on the
-  selected market; a failure there yields a no-bet `PolicyDecision`
-  (e.g., `POLICY_STALE_DATA`). Abstention is therefore enforced twice: advisory at
-  the model, binding at the policy engine.
+Two conditions are kept strictly distinct (contract and validators in §6.2.12):
+
+- **Structural invalidity** — malformed types, invalid ranges, unknown fields,
+  invalid timestamps, or broken provenance — is a schema-validation failure. The
+  run fails with `FIXTURE_INVALID`; a malformed payload is never converted into a
+  safe-looking "incomplete" record.
+- **Explicitly incomplete or conflicting evidence** — a structurally valid entity
+  whose `data_quality` block declares `is_complete: false` with named
+  `missing_fields` and/or `conflicts`.
+
+Candidate eligibility (orchestrator-enforced, before any model invocation):
+
+- The schema-validation layer marks each fixture entity complete/incomplete via
+  its `data_quality` block (§6.2.12) and fresh/stale (`valid_until` vs. the run's
+  evaluation clock).
+- The orchestrator evaluates each `status: open` candidate together with its
+  required `MatchContext` and `MarketSnapshot`.
+- Only candidates whose estimator-consumed evidence is complete and
+  non-conflicting — no estimator-consumed field named in `missing_fields`, and no
+  conflict whose `field_path` touches an estimator-consumed field — are exposed
+  to the agent as selectable candidates.
+- Declared conflicts or data gaps on non-estimator evidence leave a candidate
+  eligible; the agent sees the declared `data_quality` information, is instructed
+  to abstain on conflicting or insufficient evidence, and has a reason-code
+  vocabulary for it.
+- If no eligible candidate remains, the run terminates before model invocation
+  with the orchestrator variant of the pre-selection abstention shape (§6.2.10)
+  and reason `NO_VALID_CANDIDATES`. No model call occurs and none is recorded:
+  the model-invocation metadata reads `invocation_status: "not_invoked"` and
+  carries no model ID, responses, token counts, or tool calls.
+- The §5.7 rejection of a selection whose estimator-consumed inputs are missing
+  or conflicted remains as defense in depth for contract or tool mismatches;
+  normal orchestration filters such candidates out before the agent runs.
+- The demo estimator independently refuses input whose estimator-consumed
+  fields are missing or conflicted, and never invents replacement values
+  (§10.1).
+- Independently, the policy engine re-checks completeness and freshness
+  (staleness) on the selected market after selection; a failure there yields a
+  no-bet `PolicyDecision` (e.g., `POLICY_STALE_DATA`). Abstention is therefore
+  enforced twice: advisory at the model, binding at the policy engine.
 
 ### 5.7 Rejection of unsupported or malformed model output
 
 Structured-output parsing failure triggers at most one repair attempt (re-prompt
 with the validation error; this consumes the single §5.3 repair/retry allowance). A second failure, or any cross-check failure
-(selection outside the candidate set, missing mandatory tool evidence for a
-selection, contradictory abstain/selection flags), rejects the output and fails the
-run with `MODEL_OUTPUT_REJECTED` (safety classification). Rejected output is stored
+(selection outside the candidate set, selection of a candidate whose
+estimator-consumed inputs are missing or affected by a typed conflict per
+§6.2.12 — non-estimator gaps or conflicts do not trigger this rejection, missing
+mandatory tool evidence for a selection, contradictory abstain/selection flags),
+rejects the output and fails the run with `MODEL_OUTPUT_REJECTED` (safety
+classification).
+The missing-or-conflicted-input selection cross-check is defense in depth: the
+§5.6 eligibility filter removes such candidates before the agent runs, so it can
+fire only on a contract or tool mismatch. Rejected output is stored
 truncated in the failure record for audit; it is never partially used.
 
 ### 5.8 Model responses cannot cause external side effects
@@ -452,9 +488,14 @@ No implementation classes exist in this phase.
 - Fixture provenance on every fixture-derived contract: `fixture_set_id`,
   `fixture_set_version`, `content_digest`, `is_synthetic: true` (invariant: must be
   `true` in the MVP; a validator rejects anything else).
-- Version fields recorded per run: model ID + response metadata, `prompt_version`,
-  `estimator_id`/`estimator_version`, `policy_version`, `fee_model_version`,
-  `fixture_set_version`, application version/revision.
+- Version fields recorded per run: `fixture_set_version` and application
+  version/revision always; model ID + response metadata and `prompt_version` only
+  when a model invocation occurred; the deterministic
+  `explanation_template_version` only when an orchestrator-sourced explanation
+  was rendered; `estimator_id`/`estimator_version`, `policy_version`, and
+  `fee_model_version` only when the corresponding component ran (terminal shapes,
+  §6.2.10). Fields for components that did not run are absent — never fabricated
+  and never filled with dummy values.
 - `idempotency_key` on the run path (§6.2.1, §9.3).
 - Reason codes: closed UPPER_SNAKE enums for abstention and failure.
 - Prohibited everywhere: personal information, credentials, wallet key material,
@@ -476,23 +517,41 @@ existing run (§9.3).
 
 Required: `market_id`, `event_name` (synthetic), `series_description`, side
 semantics (`yes_means`, `no_means`), `status` (open/closed), `market_link`
-(synthetic, on a non-resolvable domain), `as_of`, `valid_until`, provenance block.
-Invariants: only `status: open` candidates reach the agent; link domain must be the
-designated synthetic domain; `is_synthetic` true.
+(synthetic, on a non-resolvable domain), `as_of`, `valid_until`, `data_quality`
+(§6.2.12), provenance block.
+Invariants: every field above is structurally required — this contract's §6.2.12
+allowlist is empty, so nothing may be excused via `missing_fields`; its
+`data_quality` block may still record typed `conflicts` (a conflict can exist
+even when every field is present); only `status: open` candidates that pass the
+§5.6 eligibility filter reach the agent; link domain must be the designated
+synthetic domain; `is_synthetic` true.
 
 #### 6.2.3 MatchContext
 
-Required: `match_id`, `market_id` ref, teams (synthetic names + synthetic rating
-inputs used by the demo estimator), `best_of`, tournament name/tier (synthetic),
-roster entries, recent-form summary, patch label, `scheduled_start`, `as_of`,
-`valid_until`, provenance. Invariants: every field the estimator consumes must be
-present, typed, and fresh, or the context is marked incomplete (§5.6).
+Structurally required (never excusable via `missing_fields`): `match_id`,
+`market_id` ref, team names (synthetic), `best_of`, tournament name/tier
+(synthetic), roster entries, patch label, `scheduled_start`, `as_of`,
+`valid_until`, `data_quality` (§6.2.12), provenance.
+Conditionally optional — this contract's §6.2.12 allowlist, which is exactly the
+estimator-consumed evidence fields: the synthetic team rating inputs and the
+recent-form summary. Each may be absent or null only when named in
+`missing_fields`, which forces `is_complete: false`; in the Pydantic
+representation these fields — and only these — are conditionally optional.
+Invariants: malformed values are structural validation failures
+(`FIXTURE_INVALID`), never represented as incompleteness; freshness is
+policy-checked against the run's evaluation clock (§5.6).
 
 #### 6.2.4 MarketSnapshot
 
-Required: `market_id`, `side`, `ask_price_micro`, optional `bid_price_micro`,
-`liquidity_hint_micro`, `captured_at`, `valid_until`, `fee_model_version` ref,
-provenance. Invariants: `0 < ask_price_micro < 1_000_000`; snapshot staleness is
+Structurally required (never excusable via `missing_fields`): `market_id`,
+`side`, `ask_price_micro`, `captured_at`, `valid_until`, `fee_model_version` ref,
+`data_quality` (§6.2.12), provenance — a snapshot without an ask price is
+structurally invalid, not incomplete.
+Conditionally optional — this contract's §6.2.12 allowlist: `bid_price_micro`
+and `liquidity_hint_micro`. Each may be null/absent only when named in
+`missing_fields`, which forces `is_complete: false`; otherwise both must be
+present.
+Invariants: `0 < ask_price_micro < 1_000_000`; snapshot staleness is
 policy-checked against the evaluation clock at decision time, not load time.
 
 #### 6.2.5 ProbabilityEstimate
@@ -507,12 +566,49 @@ inputs; produced only by the estimator interface, never by the LLM.
 #### 6.2.6 EdgeAssessment
 
 Required: `market_id`, `side`, `probability_ppm`, `ask_price_micro`,
-`gross_edge_ppm` (= `probability_ppm − ask_price_micro`, both on the 1e6 scale),
-`fee_estimate_micro` + `fee_model_version`, `net_edge_ppm`, `computed_at`,
-input digests. Invariants: integer arithmetic only; reproducible; the synthetic fee
-model is versioned fixture configuration, clearly labeled synthetic (the real
-Jupiter fee formula is unpublished — see
+`gross_edge_ppm`, `fee_estimate_micro`, `fee_rate_ppm`, `fee_model_version`,
+`net_edge_ppm`, `computed_at`, input digests.
+
+**Fee semantics.** `fee_estimate_micro` means: the estimated synthetic fee per one
+contract whose successful payout is $1.00, expressed in micro-USD. Because a
+probability in ppm and a per-$1-contract micro-USD amount both use a 1,000,000
+scale, the two are numerically comparable for per-contract expected-value
+calculations — which is what makes the edge arithmetic below well-typed.
+
+**Synthetic fee configuration.** The fixture MVP's fee model is versioned fixture
+configuration consisting of `fee_rate_ppm` (a proportional rate applied to the ask
+price) and `fee_model_version`, clearly labeled synthetic/non-production. This is
+a fixture-demo fee model, not Jupiter's real fee formula (the real formula is
+unpublished — see
 [research/jupiter-prediction-markets.md](research/jupiter-prediction-markets.md) §6).
+
+**Arithmetic (integer-only; conservative ceiling division for the fee, so the net
+edge is never overstated):**
+
+- `fee_estimate_micro = ceil(ask_price_micro × fee_rate_ppm / 1_000_000)`
+- `gross_edge_ppm = probability_ppm - ask_price_micro`
+- `net_edge_ppm = gross_edge_ppm - fee_estimate_micro`
+
+**Validation:** `0 <= fee_rate_ppm <= 1_000_000`;
+`0 <= fee_estimate_micro <= 1_000_000`; every input and result is an integer, with
+no float conversion anywhere in the calculation; negative `gross_edge_ppm` and
+`net_edge_ppm` are valid values, not errors; out-of-range financial inputs are
+rejected, never clamped.
+
+**Worked synthetic example** (the documented reference case for tests):
+
+| Quantity | Value |
+|---|---|
+| `probability_ppm` | `650_000` |
+| `ask_price_micro` | `600_000` |
+| `fee_rate_ppm` (synthetic, 1%) | `10_000` |
+| `fee_estimate_micro` = ceil(600_000 × 10_000 / 1_000_000) | `6_000` |
+| `gross_edge_ppm` = 650_000 − 600_000 | `50_000` |
+| `net_edge_ppm` = 50_000 − 6_000 | `44_000` |
+
+Invariants: integer arithmetic only; reproducible bit-for-bit from recorded
+inputs; the synthetic fee model is versioned fixture configuration, clearly
+labeled synthetic.
 
 #### 6.2.7 PolicyDecision
 
@@ -521,15 +617,30 @@ Required: `decision` (`proceed` | `no_bet`), `reason_codes[]`, `checks[]` (each:
 configured-rule provenance (e.g., the Jup Callers entry band 100,000–900,000 micro
 as externally sourced configuration per CLAUDE.md §8), `evaluated_at`, input
 digests. Invariants: derived solely from recorded deterministic inputs; the engine
-is a pure function; `no_bet` is a successful outcome, not an error.
+is a pure function; the checks independently re-verify completeness (§6.2.12) and
+freshness of the selected market's evidence after selection, trusting no upstream
+stage; `no_bet` is a successful outcome, not an error.
 
-#### 6.2.8 AgentExplanation
+#### 6.2.8 DecisionExplanation
 
-Required: `run_id`, `summary` (bounded length), `key_factors[]`, `conflicts[]`,
-`data_gaps[]`, `confidence_qualifier` (qualitative enum), `evidence_refs[]`
-(must resolve), `prompt_version`, model metadata ref. Invariants: contains no
-authoritative numbers — the UI and audit record render numbers from §6.2.5–§6.2.7;
-prose is validated for schema and length, and stored as narrative only.
+The run's narrative explanation, source-aware so the record never implies a model
+produced text when none ran. Required for both sources: `run_id`, `source`
+(`agent` | `orchestrator`), `summary` (bounded length), `key_factors[]`,
+`conflicts[]`, `data_gaps[]`, `confidence_qualifier` (qualitative enum),
+`evidence_refs[]` (must resolve).
+
+Conditional fields (validator-enforced in both directions):
+
+- `source: "agent"` — `prompt_version` required; model metadata ref required;
+  `explanation_template_version` must be absent.
+- `source: "orchestrator"` — `explanation_template_version` (the versioned
+  deterministic template used, required for audit reproducibility);
+  `prompt_version` must be absent; model metadata ref must be absent.
+
+Invariants: both variants are narrative-only and non-authoritative; they contain
+no authoritative numbers — the UI and audit record render all displayed or
+persisted numeric claims from §6.2.5–§6.2.7; prose is validated for schema and
+length, and stored as narrative only.
 
 #### 6.2.9 SimulatedDiscordDraft
 
@@ -547,16 +658,86 @@ post-MVP draft generator, not this simulation).
 
 #### 6.2.10 DecisionRecord
 
-The audit aggregate, persisted once per run. Required: `run_id`, `schema_version`,
-the `RunRequest`, fixture provenance, candidates considered, the agent's validated
-selection/abstention output, `MatchContext` refs with timestamps, `MarketSnapshot`,
-`ProbabilityEstimate`, `EdgeAssessment`, `PolicyDecision`, `AgentExplanation`,
-`SimulatedDiscordDraft` (present iff decision was `proceed`), model block (model ID,
-fallback data per §5.9, response IDs, token counts, tool-call log), all version
-fields (§6.1), state-transition history with timestamps, terminal `outcome`
-(`completed` | `abstained`), latency, reason codes. Invariants: immutable after the
-terminal write (§9.7); passes the decision-record validator before any write; no
-PII, credentials, or key material.
+The audit aggregate, persisted once per run. A `DecisionRecord` is conditional by
+outcome path: it exists in exactly three valid terminal shapes, and model-level
+validators reject every inconsistent combination before persistence. Failures and
+timeouts persist a `RunFailure` (§6.2.11) instead — never a partial
+`DecisionRecord`.
+
+Common to all three shapes: `run_id`, `schema_version`, the `RunRequest`, fixture
+provenance, candidates considered (with their §5.6 eligibility results), the
+run's validated selection/abstention output, `DecisionExplanation` (§6.2.8),
+model-invocation metadata (below), all audit/version fields (§6.1),
+state-transition history with timestamps, latency, reason codes, terminal
+`outcome` (`completed` | `abstained`).
+
+**Model-invocation metadata.** Every record carries `invocation_status`
+(`invoked` | `not_invoked`). When `invoked`: model ID, `prompt_version`, response
+IDs, token counts, fallback data per §5.9, and the model tool-call log are
+required. When `not_invoked`: all of those fields must be absent — never
+fabricated and never represented with dummy values. The record must never imply
+that Gemini produced an explanation, response, tokens, or tool calls when no
+model invocation occurred.
+
+**Shape A — pre-selection abstention** (`outcome: abstained`). No market was
+selected and every post-selection artifact is absent. One terminal field shape
+with exactly two source variants, discriminated by `abstention_source`:
+
+- **Agent variant** (`abstention_source: "agent"`): the agent abstained in
+  `selecting`. Required: the validated agent abstention output
+  (`abstained: true`, `selected_market_id: null`) with its agent
+  `abstain_reason_code`; an agent-produced `DecisionExplanation`
+  (`source: "agent"`); and `invocation_status: "invoked"` with model ID,
+  response metadata, token usage, `prompt_version`, and the applicable
+  tool-call records.
+- **Orchestrator variant** (`abstention_source: "orchestrator"`): used only by
+  the deterministic `NO_VALID_CANDIDATES` short-circuit (§5.6). Required: a
+  deterministic abstention output whose reason code is `NO_VALID_CANDIDATES`;
+  an orchestrator-produced `DecisionExplanation` (`source: "orchestrator"`)
+  carrying its deterministic `explanation_template_version` for audit
+  reproducibility; and `invocation_status: "not_invoked"`. Model ID, response
+  IDs, token usage, `prompt_version`, fallback-model data, and model tool-call
+  records must be absent — not fabricated and not represented with dummy
+  values.
+
+Both variants: selected market, `MatchContext`, `MarketSnapshot`,
+`ProbabilityEstimate`, `EdgeAssessment`, `PolicyDecision`, and
+`SimulatedDiscordDraft` must be absent.
+
+**Shape B — policy no-bet after selection** (`outcome: abstained`). Required:
+selected market, `MatchContext` refs with timestamps, `MarketSnapshot`,
+`ProbabilityEstimate`, `EdgeAssessment`, `PolicyDecision` with
+`decision: "no_bet"`, explanation, and full audit/version metadata. Must be
+absent: `SimulatedDiscordDraft`.
+
+**Shape C — completed proceed decision** (`outcome: completed`). Required:
+selected market, `MatchContext` refs with timestamps, `MarketSnapshot`,
+`ProbabilityEstimate`, `EdgeAssessment`, `PolicyDecision` with
+`decision: "proceed"`, explanation, `SimulatedDiscordDraft`, and full
+audit/version metadata.
+
+Shapes B and C always follow an agent selection, so both require
+`invocation_status: "invoked"` and an agent-sourced `DecisionExplanation`.
+
+Model-level validators reject every inconsistent combination, including at least:
+`outcome: completed` without a draft, or with a `no_bet` (or absent)
+`PolicyDecision`; a draft present with `outcome: abstained` or
+`decision: "no_bet"`; any post-selection artifact (`MatchContext`,
+`MarketSnapshot`, `ProbabilityEstimate`, `EdgeAssessment`, `PolicyDecision`,
+draft) present on shape A in either variant; a selected market without a
+`PolicyDecision`; a `PolicyDecision` without both `ProbabilityEstimate` and
+`EdgeAssessment`; an abstention output that also names a selected market;
+`abstention_source: "orchestrator"` with any model ID, `prompt_version`,
+response metadata, token usage, or model tool-call records;
+`abstention_source: "orchestrator"` with a reason code other than
+`NO_VALID_CANDIDATES`; `abstention_source: "agent"` with
+`invocation_status: "not_invoked"`; `abstention_source: "agent"` without the
+required model metadata; shape B or C with `invocation_status: "not_invoked"`;
+and a `DecisionExplanation` whose `source` contradicts the record's
+`abstention_source` or invocation status.
+
+Invariants: immutable after the terminal write (§9.7); passes the decision-record
+validator before any write; no PII, credentials, or key material.
 
 #### 6.2.11 RunFailure
 
@@ -567,6 +748,65 @@ Required: `run_id`, `state_at_failure`, `classification`
 model metadata when relevant, truncated rejected output when relevant (§5.7).
 Invariants: written on `failed`/`timed_out` terminals; never contains raw
 credentials or unbounded payloads.
+
+#### 6.2.12 DataQuality
+
+A small reusable data-quality block embedded in every evidence-bearing
+fixture-derived contract (`CandidateMarket` §6.2.2, `MatchContext` §6.2.3,
+`MarketSnapshot` §6.2.4) as `data_quality`:
+
+- `is_complete` (bool)
+- `missing_fields[]` (field paths of allowlisted evidence fields whose values
+  are genuinely unavailable)
+- `conflicts[]` (typed conflict entries, defined below)
+
+**Structural floor vs. allowlisted evidence.** Identity, linkage, provenance,
+schema/version, and the relevant timestamps of every embedding contract are
+structurally required and can never be excused through `missing_fields`. Only an
+explicitly documented allowlist of evidence fields per contract (declared in
+§6.2.2–§6.2.4) may be absent or null. In the Pydantic representation those
+allowlisted fields — and only those — are conditionally optional; every other
+field remains unconditionally required, so "required" never contradicts "may be
+absent".
+
+Validator-enforced invariants:
+
+- Every absent or null allowlisted field appears exactly once in
+  `missing_fields`.
+- Every path in `missing_fields` identifies a known allowlisted field of the
+  embedding contract that is actually absent or null. Unknown paths, duplicate
+  paths, and attempts to mark structural fields as missing are validation
+  failures.
+- `is_complete: true` requires empty `missing_fields`, empty `conflicts`, and
+  every conditionally optional estimator-consumed input present.
+- `is_complete: false` requires at least one genuinely missing allowlisted
+  field or at least one conflict.
+- A conflict may exist even when the field it concerns is present.
+
+**Conflict structure.** Each entry in `conflicts[]` is typed, bounded, and
+audit-safe — never untyped prose and never an arbitrary unbounded payload:
+
+- `field_path` — the affected field, which may itself be present; unknown paths
+  are validation failures
+- `description` — bounded length
+- `evidence_refs[]` — non-empty; each ref must resolve to a validated fixture
+  entity or recorded source
+
+Boundary rule — structural invalidity is not incompleteness. Malformed types,
+invalid ranges, unknown fields, invalid timestamps, and broken provenance are
+structural validation failures that fail the run with `FIXTURE_INVALID`
+(§6.2.11). The `data_quality` block only lets *structurally valid* data
+explicitly represent unavailable or conflicting evidence. Arbitrary malformed
+payloads must never be turned into safe-looking incomplete records.
+
+Consequences elsewhere in the design: the demo estimator refuses input whose
+estimator-consumed fields are missing or conflicted — while accepting entities
+whose `is_complete: false` stems only from non-estimator evidence — and never
+invents replacement values (§10.1); the orchestrator exposes only eligible
+candidates to the agent and terminates with the orchestrator-variant
+pre-selection abstention (`NO_VALID_CANDIDATES`) when none remain (§5.6); and
+the policy engine independently re-checks completeness and freshness after
+selection (§6.2.7).
 
 ### 6.3 Post-MVP contracts (documented only — not implemented in the MVP)
 
@@ -636,19 +876,27 @@ stateDiagram-v2
 | State | Work performed |
 |---|---|
 | `created` | Run document created (idempotent, §9.3); request accepted. |
-| `validating` | Scenario fixtures loaded and schema-validated; freshness pre-check; abort to `failed` on `FIXTURE_INVALID`/`SCENARIO_UNKNOWN`; abstention short-circuit to `explaining` when no valid candidates exist. |
+| `validating` | Scenario fixtures loaded and schema-validated; freshness pre-check; candidate-eligibility filter applied (§5.6); abort to `failed` on `FIXTURE_INVALID`/`SCENARIO_UNKNOWN`; short-circuit to `explaining` with the orchestrator-variant pre-selection abstention (`NO_VALID_CANDIDATES`, no model invocation) when no eligible candidate exists. |
 | `selecting` | Bounded agent invocation (§5); outcome is a validated selection or abstention. |
 | `estimating` | Deterministic estimator produces `ProbabilityEstimate` (memoized if already computed via tool call). |
 | `comparing` | Edge and fee calculator produces `EdgeAssessment`. |
 | `policy_checking` | Policy engine produces `PolicyDecision` (final authority; re-checks freshness against the evaluation clock). |
 | `explaining` | Explanation assembled and validated; on `proceed`, the simulated draft is generated deterministically. |
 | `persisting` | Decision-record validator runs; single atomic terminal Firestore write. |
-| Terminals | `completed` (bet-eligible, draft present), `abstained` (documented no-bet — a successful outcome), `failed`, `timed_out`. |
+| Terminals | `completed` (proceed decision, draft present — shape C of §6.2.10), `abstained` (pre-selection abstention or policy no-bet — shapes A/B of §6.2.10; a successful outcome), `failed`, `timed_out` (both failure terminals persist a `RunFailure`). |
 
 Allowed transitions are exactly those in the diagram: strictly forward, no re-entry
 into earlier states, no transition out of a terminal state. `abstained` is a
 first-class success: it flows through `explaining` and `persisting` like any other
-run and produces a full `DecisionRecord`.
+run and produces a `DecisionRecord` in the terminal shape matching its path
+(§6.2.10) — the pre-selection abstention shape (A) with
+`abstention_source: "agent"` when the agent abstains in `selecting`, the same
+shape with `abstention_source: "orchestrator"` and
+`invocation_status: "not_invoked"` when the eligibility filter leaves no
+candidates in `validating` (`NO_VALID_CANDIDATES`), and the policy no-bet shape
+(B) when the policy engine returns `no_bet` after selection. A `proceed`
+decision persists the completed shape (C) with its simulated draft. `failed` and
+`timed_out` persist a `RunFailure` (§6.2.11), never a partial `DecisionRecord`.
 
 ### 7.2 Idempotency
 
@@ -711,16 +959,21 @@ terminates as `abstained` — a correct, auditable outcome rather than a failure
 | `GET /api/runs/{run_id}` | Returns the persisted run view (status, `DecisionRecord` or `RunFailure`). |
 | `GET /` | Minimal server-rendered demo page: choose one of the synthetic scenarios, trigger a run, view results, list recent runs. |
 
-The demo page displays, for each run: selected market or abstention; fixture and
+The demo page displays, for each run, the fields present in its terminal shape
+(§6.2.10): selected market or abstention; fixture and
 evidence timestamps; the deterministic probability (with the `DEMO ESTIMATOR — NOT
 PREDICTIVE` label); the synthetic ask price; the edge calculation; the policy result
-with per-check outcomes; the agent explanation; the `SIMULATION — DO NOT POST`
+with per-check outcomes; the decision explanation with its labeled source (agent
+or orchestrator); the `SIMULATION — DO NOT POST`
 Discord draft when applicable; the audit/run ID; and persistent fixture-data and
 paper-mode labels on every screen.
 
 Recommended synthetic scenarios (final set fixed in plan slice 3): clear-edge
-(produces a draft), thin-edge (policy no-bet), conflicting-evidence (agent
-abstains), stale-data (freshness no-bet), outside-entry-band (policy no-bet).
+(produces a draft), thin-edge (policy no-bet), conflicting-evidence (qualitative
+conflicts on non-estimator evidence — candidates stay eligible and the agent
+abstains), stale-data (freshness no-bet), outside-entry-band (policy no-bet),
+no-valid-candidates (every candidate's estimator-consumed evidence incomplete or
+conflicting — the orchestrator abstains before model invocation).
 
 **Authentication and cost abuse.** The Cloud Run service requires IAM
 authentication; only the owner holds `roles/run.invoker`. Cost-abuse controls:
@@ -813,8 +1066,9 @@ One primary collection:
   updates (`status`, `transitions[]` append), and is finalized by a **single
   transaction** that writes `decision_record` (or `failure`), the terminal `status`,
   and `completed_at` together, with a precondition that the current status is
-  non-terminal. Audit data is therefore atomic: either the full validated record is
-  present or the run is not terminal.
+  non-terminal. Audit data is therefore atomic: either the validated record — a
+  `DecisionRecord` in one of the three terminal shapes of §6.2.10, or a
+  `RunFailure` — is present in full, or the run is not terminal.
 - Post-terminal, the application exposes no code path that updates the document
   (§9.7).
 
@@ -886,6 +1140,15 @@ matches and must never be presented as if it does.
 - Pure function of validated `MatchContext` fields (synthetic team ratings and form
   supplied by the fixture), computed with integer/lookup arithmetic for bit-exact
   reproducibility.
+- Field-specific input boundary: the estimator returns a typed rejection when an
+  estimator-consumed field is absent/null or listed in `missing_fields`, or when
+  a typed conflict's `field_path` affects an estimator-consumed field (§6.2.12).
+  An otherwise valid entity whose `is_complete: false` stems exclusively from
+  missing or conflicting non-estimator evidence is accepted — the estimator
+  depends only on the fields it consumes. It never substitutes defaults or
+  invents replacement values. The §5.6 eligibility filter and §5.7 cross-check
+  normally keep rejection cases from reaching the estimator; its own refusal is
+  defense in depth.
 - Versioned (`estimator_id: demo`, `estimator_version`), `is_predictive: false`.
 - Labeled `DEMO ESTIMATOR — NOT PREDICTIVE` in the UI, the audit record, and the
   documentation (invariant in §6.2.5).
