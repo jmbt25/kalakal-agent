@@ -1,7 +1,8 @@
 # Feasibility Report — Kalakal Agent (Phase 1)
 
-Synthesis of the Phase 1 research documents. Access date for all evidence: 2026-08-05.
-Full citations live in the per-topic documents; this file cites only pivotal sources.
+Synthesis of the Phase 1 research documents, plus a Phase 2 addendum (§9). Access
+date for all evidence: 2026-08-05. Full citations live in the per-topic documents;
+this file cites only pivotal sources.
 Status labels: `Verified` / `Inference` / `Unverified` / `Conflicting`.
 
 ## 1. Verified capabilities
@@ -179,3 +180,51 @@ probability estimation, edge comparison, policy checks, draft generation, audit
 records — is demonstrable on fixtures or paper/shadow state, and the hackathon judges
 "are not required to test the Project" beyond the video and description. The open
 questions gate live execution and public use of live API data, not the engineering.
+
+## 9. Phase 2 addendum — Google stack and policy (2026-08-05)
+
+Phase 2 ([google-stack.md](google-stack.md)) researched the Google side (Gemini
+models, agent frameworks, Cloud architecture, acceptable-use policy). Net result:
+**no new Google-side blocker** — no in-scope Google or Devpost policy prohibits a
+prediction-market application per se (no gambling-application ban, no financial-AI
+ban, no crypto-trading ban; the only gambling clause anywhere is the Google APIs
+ToS restriction on "unlawful online gambling"). Mode 4's human review sits outside
+the one automated-decisions restriction in scope by that clause's own wording
+("without human supervision"); Mode 5 faces two ambiguous clauses and stays
+disabled. This is an evidence-based project reading of the policy texts, not legal
+permission or legal advice. The decisive gate remains the §3.1 Jupiter questions
+plus external gambling-law legality. (Evidence: google-stack.md §5.
+**Verified/Inference** per that document.)
+
+Two rules findings materially sharpen §3 and §7:
+
+- **The hackathon rules bind the submission to third-party terms.** "Third-Party
+  Integrations: ... Entrants must be authorized to use these third-party tools and
+  information in accordance with any terms and conditions or licensing requirements
+  of the tool" — so the unresolved Jupiter license questions (§3.1) are now also a
+  **submission-validity risk**, not only a platform risk. The rules additionally
+  require that no part of the submission is unlawful "in any country, state or
+  applicable territory where you created the video and in the United States" — a
+  US-law overlay on the demo regardless of entrant location.
+  ([rules](https://allthingsagentichackathon.devpost.com/rules), 2026-08-05.)
+  **Verified (clauses); Inference (consequence).** This reinforces and raises the
+  stakes of the §8 fixtures-only demo recommendation.
+- **Open question 7 is half-mooted.** Whether Vertex AI alone satisfies "Google
+  Cloud infrastructure service" no longer matters: the recommended stack uses Cloud
+  Run + Firestore, which satisfy the requirement unambiguously
+  (google-stack.md §4/§6). The subject-matter-acceptability half of question 7
+  remains open. **Inference.**
+
+The §8 recommendation is unchanged: proceed in Modes 1–3 plus offline draft
+generation; demo on fixtures/paper data; Mode 4 designed but not exercised; Mode 5
+disabled. Recommended Google stack (non-binding, google-stack.md §6): Python +
+Google ADK single agent + `gemini-3.6-flash` via Vertex AI with ADC/service
+identity (fallback `gemini-3.5-flash`) + Cloud Run + Firestore (+ Secret Manager
+once external API credentials exist). The fixtures-only demo may run in
+us-central1 (it makes no Jupiter calls); any environment that accesses live
+Jupiter data has a **TBD region** until the §3.2 geographic rules are clarified.
+Expected cost ≈$0 and under $5/month for the stated demo assumptions — a bounded
+estimate, not a worst-case guarantee (google-stack.md §4.7). The Google research
+is sufficient to begin fixture-only implementation; model-region availability,
+actual quotas, current prices, and the final region remain pre-deployment checks
+(google-stack.md §6).
