@@ -188,6 +188,65 @@ def make_market_snapshot(**over: Any) -> MarketSnapshot:
     return MarketSnapshot(**market_snapshot_kwargs(**over))
 
 
+def consideration_kwargs(**over: Any) -> dict[str, Any]:
+    """Kwargs for a valid, eligible considered-candidate evidence bundle."""
+    kwargs: dict[str, Any] = {
+        "market": make_candidate_market(),
+        "match_context": make_match_context(),
+        "market_snapshot": make_market_snapshot(),
+        "evaluation_side": "yes",
+        "eligible": True,
+        "ineligibility_reasons": (),
+    }
+    kwargs.update(over)
+    return kwargs
+
+
+def make_consideration(**over: Any) -> CandidateEligibility:
+    return CandidateEligibility(**consideration_kwargs(**over))
+
+
+def missing_estimator_match(**over: Any) -> MatchContext:
+    """A match context whose yes_team_rating is genuinely, declaredly absent."""
+    kwargs: dict[str, Any] = {
+        "yes_team_rating": None,
+        "data_quality": DataQuality(
+            is_complete=False,
+            missing_fields=("yes_team_rating",),
+            conflicts=(),
+        ),
+    }
+    kwargs.update(over)
+    return make_match_context(**kwargs)
+
+
+def make_ineligible_consideration(**over: Any) -> CandidateEligibility:
+    """An ineligible bundle: a declared missing estimator-consumed input."""
+    kwargs = consideration_kwargs(
+        match_context=missing_estimator_match(),
+        eligible=False,
+        ineligibility_reasons=("ESTIMATOR_INPUT_MISSING",),
+    )
+    kwargs.update(over)
+    return CandidateEligibility(**kwargs)
+
+
+def make_second_consideration(
+    market_id: str = "mkt-2", match_id: str = "match-2", **over: Any
+) -> CandidateEligibility:
+    """A distinct eligible bundle for multi-candidate records."""
+    kwargs = consideration_kwargs(
+        market=make_candidate_market(
+            market_id=market_id,
+            market_link=SYNTHETIC_MARKET_LINK_PREFIX + market_id,
+        ),
+        match_context=make_match_context(match_id=match_id, market_id=market_id),
+        market_snapshot=make_market_snapshot(market_id=market_id),
+    )
+    kwargs.update(over)
+    return CandidateEligibility(**kwargs)
+
+
 def make_estimate(
     match: MatchContext | None = None, side: MarketSide = "yes"
 ) -> ProbabilityEstimate:
@@ -525,13 +584,7 @@ def _record_common_kwargs() -> dict[str, Any]:
         "run_id": RUN_ID,
         "request": make_run_request(),
         "provenance": make_provenance(content_digest=sha_hex("scenario")),
-        "candidates_considered": (
-            CandidateEligibility(
-                market=make_candidate_market(),
-                eligible=True,
-                ineligibility_reasons=(),
-            ),
-        ),
+        "candidates_considered": (make_consideration(),),
         "explanation": make_explanation("agent"),
         "application_version": "0.1.0",
         "latency_ms": 1500,
@@ -559,13 +612,7 @@ def record_a_orch_kwargs(**over: Any) -> dict[str, Any]:
     kwargs = _record_common_kwargs()
     kwargs.update(
         {
-            "candidates_considered": (
-                CandidateEligibility(
-                    market=make_candidate_market(),
-                    eligible=False,
-                    ineligibility_reasons=("ESTIMATOR_INPUT_MISSING",),
-                ),
-            ),
+            "candidates_considered": (make_ineligible_consideration(),),
             "explanation": make_explanation("orchestrator"),
             "outcome": "abstained",
             "abstention_source": "orchestrator",
@@ -607,6 +654,11 @@ def record_b_kwargs(**over: Any) -> dict[str, Any]:
     kwargs = _record_common_kwargs()
     kwargs.update(
         {
+            # The considered bundle embeds the exact evidence the selection
+            # used; the top-level artifacts must equal it.
+            "candidates_considered": (
+                make_consideration(match_context=match, market_snapshot=snapshot),
+            ),
             "outcome": "abstained",
             "selection_source": "agent",
             "selection": MarketSelection(

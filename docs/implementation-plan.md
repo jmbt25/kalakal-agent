@@ -98,7 +98,12 @@ Standing rules:
   `tests/unit/` for each.
 - **Acceptance criteria** (amended 2026-08-06 by the pre-Slice-5 alignment
   pass, which added the truthful `deterministic_stub` source variants and the
-  record-layer `selection_source` attribution): every §6.2 contract exists
+  record-layer `selection_source` attribution, and by the candidate-evidence
+  audit correction, which extended `candidates_considered` to complete
+  evidence bundles with derived, non-forgeable eligibility results and
+  record-wide evidence-reference pools per
+  [architecture.md §6.2.10](architecture.md#6210-decisionrecord)): every
+  §6.2 contract exists
   with its invariants enforced
   by validators (e.g., `is_synthetic` must be true, `is_predictive` false, label
   literal, micro/ppm ranges, UTC-only timestamps); `DecisionRecord` is conditional
@@ -328,7 +333,14 @@ Standing rules:
   `policy_checking` and terminates `POLICY_STALE_DATA`), and an
   all-ineligible
   candidate set terminates before any selector invocation with the
-  orchestrator-variant pre-selection abstention; the stub selector behaves
+  orchestrator-variant pre-selection abstention; eligibility is computed by
+  the shared pure evaluator (`derive_ineligibility_reasons`,
+  [architecture.md §5.6](architecture.md#56-incomplete-conflicting-or-stale-input--abstention)) —
+  never a second implementation — and every record persists exactly the
+  considered-candidate evidence bundles supplied to the selector (candidate
+  market, match context, market snapshot, evaluation side, derived
+  eligibility result), which the record validator re-derives and enforces;
+  the stub selector behaves
   exactly per architecture §5.10 — it never reads
   `expected_outcome_class` or `expected_reason_code`, never branches on
   scenario ID, operates only on the eligible candidate data it is given,

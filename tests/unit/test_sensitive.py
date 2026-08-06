@@ -159,7 +159,7 @@ class TestFailClosed:
     def test_valid_record_depth_stays_inside_budget(self) -> None:
         # The deepest valid structure: record -> candidates -> eligibility ->
         # market -> data_quality -> conflicts -> conflict -> refs -> ref -> str.
-        from kalakal.domain import CandidateEligibility, DataQuality
+        from kalakal.domain import DataQuality
 
         quality = DataQuality(
             is_complete=False,
@@ -169,10 +169,8 @@ class TestFailClosed:
         record = PreSelectionAbstentionRecord(
             **f.record_a_agent_kwargs(
                 candidates_considered=(
-                    CandidateEligibility(
-                        market=f.make_candidate_market(data_quality=quality),
-                        eligible=True,
-                        ineligibility_reasons=(),
+                    f.make_consideration(
+                        market=f.make_candidate_market(data_quality=quality)
                     ),
                 )
             )

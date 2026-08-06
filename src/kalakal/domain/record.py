@@ -14,6 +14,7 @@ from pydantic import Field, TypeAdapter, model_validator
 
 from kalakal.domain.draft import SimulatedDiscordDraft
 from kalakal.domain.edge import EdgeAssessment
+from kalakal.domain.eligibility import derive_ineligibility_reasons
 from kalakal.domain.estimate import ProbabilityEstimate
 from kalakal.domain.explanation import DecisionExplanation
 from kalakal.domain.invocation import (
@@ -35,6 +36,7 @@ from kalakal.domain.primitives import (
     FixtureProvenance,
     Identifier,
     LatencyMs,
+    MarketSide,
     RunState,
     SelectionSource,
     StrictModel,
@@ -56,31 +58,49 @@ class StateTransition(StrictModel):
 
 
 class CandidateEligibility(StrictModel):
-    """One considered candidate with its §5.6 eligibility result."""
+    """One considered candidate: the complete bounded evidence bundle used
+    during validation/selection, plus its §5.6 eligibility result.
+
+    The result is non-forgeable: the validator re-derives the exact reason
+    tuple from the embedded evidence via
+    :func:`derive_ineligibility_reasons` and rejects any supplied result
+    that differs — missing, extra, duplicated, reordered, or fabricated
+    reasons all fail. The bundle carries no scenario ID or oracle fields
+    (``expected_outcome_class``/``expected_reason_code``): the selector's
+    input surface stays oracle-free.
+    """
 
     market: CandidateMarket
+    match_context: MatchContext
+    market_snapshot: MarketSnapshot
+    evaluation_side: MarketSide
     eligible: bool
     ineligibility_reasons: Annotated[tuple[EligibilityReason, ...], Field(max_length=4)]
 
     @model_validator(mode="after")
     def _check_consistency(self) -> CandidateEligibility:
-        reasons = self.ineligibility_reasons
-        if len(set(reasons)) != len(reasons):
-            raise ValueError("ineligibility_reasons must not contain duplicates")
-        if self.eligible and reasons:
-            raise ValueError("an eligible candidate must not carry reasons")
-        if not self.eligible and not reasons:
-            raise ValueError("an ineligible candidate requires at least one reason")
-        if self.eligible and self.market.status != "open":
-            raise ValueError("a market that is not open cannot be eligible")
-        if (
-            self.market.status == "closed"
-            and not self.eligible
-            and "NOT_OPEN" not in reasons
-        ):
-            raise ValueError("an ineligible closed market must carry NOT_OPEN")
-        if self.market.status == "open" and "NOT_OPEN" in reasons:
-            raise ValueError("an open market must not carry NOT_OPEN")
+        if self.match_context.market_id != self.market.market_id:
+            raise ValueError(
+                "match_context.market_id must equal the candidate market_id"
+            )
+        if self.market_snapshot.market_id != self.market.market_id:
+            raise ValueError(
+                "market_snapshot.market_id must equal the candidate market_id"
+            )
+        if self.market_snapshot.side != self.evaluation_side:
+            raise ValueError(
+                "market_snapshot.side must equal the candidate evaluation_side"
+            )
+        derived = derive_ineligibility_reasons(self.market, self.match_context)
+        if self.ineligibility_reasons != derived:
+            raise ValueError(
+                "ineligibility_reasons must equal the reasons derived from the "
+                f"embedded evidence, exactly and in order: {list(derived)}"
+            )
+        if self.eligible is not (not derived):
+            raise ValueError(
+                "eligible must be true exactly when no ineligibility reason is derived"
+            )
         return self
 
 
@@ -171,12 +191,27 @@ class _DecisionRecordBase(StrictModel):
         market_ids = [c.market.market_id for c in self.candidates_considered]
         if len(set(market_ids)) != len(market_ids):
             raise ValueError("candidates_considered must have unique market_ids")
+        match_ids = [c.match_context.match_id for c in self.candidates_considered]
+        if len(set(match_ids)) != len(match_ids):
+            raise ValueError("candidates_considered must have unique match_ids")
         for candidate in self.candidates_considered:
+            candidate_id = candidate.market.market_id
             _check_fixture_set(
-                f"candidate {candidate.market.market_id}",
+                f"candidate {candidate_id}",
                 candidate.market.provenance,
                 self.provenance,
             )
+            _check_fixture_set(
+                f"candidate {candidate_id} match_context",
+                candidate.match_context.provenance,
+                self.provenance,
+            )
+            _check_fixture_set(
+                f"candidate {candidate_id} market_snapshot",
+                candidate.market_snapshot.provenance,
+                self.provenance,
+            )
+        self._resolve_record_refs()
         sensitive = find_sensitive_content(self)
         if sensitive is not None:
             raise ValueError(f"record rejected by sensitive-content scan: {sensitive}")
@@ -187,11 +222,31 @@ class _DecisionRecordBase(StrictModel):
             factor.evidence_ref for factor in self.explanation.key_factors
         ]
 
-    def _candidate_conflict_refs(self) -> list[EvidenceRef]:
+    def _considered_conflict_refs(self) -> list[EvidenceRef]:
         refs: list[EvidenceRef] = []
         for candidate in self.candidates_considered:
             refs.extend(_conflict_refs(candidate.market.data_quality))
+            refs.extend(_conflict_refs(candidate.match_context.data_quality))
+            refs.extend(_conflict_refs(candidate.market_snapshot.data_quality))
         return refs
+
+    def _resolve_record_refs(self) -> None:
+        # Every shape resolves explanation and conflict references against
+        # the complete considered evidence, so a shape A explanation can
+        # cite the match or snapshot that caused a selector abstention.
+        _resolve_evidence_refs(
+            self._explanation_refs() + self._considered_conflict_refs(),
+            market_ids=frozenset(
+                c.market.market_id for c in self.candidates_considered
+            ),
+            match_ids=frozenset(
+                c.match_context.match_id for c in self.candidates_considered
+            ),
+            snapshot_market_ids=frozenset(
+                c.market_snapshot.market_id for c in self.candidates_considered
+            ),
+            fixture_source_ids=frozenset({self.provenance.fixture_set_id}),
+        )
 
     def _require_agent_explanation(self, invocation: ModelInvocationInvoked) -> None:
         if self.explanation.source != "agent":
@@ -292,15 +347,6 @@ class PreSelectionAbstentionRecord(_DecisionRecordBase):
                     "a deterministic-stub abstention requires "
                     "deterministic-selector metadata"
                 )
-        _resolve_evidence_refs(
-            self._explanation_refs() + self._candidate_conflict_refs(),
-            market_ids=frozenset(
-                c.market.market_id for c in self.candidates_considered
-            ),
-            match_ids=frozenset(),
-            snapshot_market_ids=frozenset(),
-            fixture_source_ids=frozenset({self.provenance.fixture_set_id}),
-        )
         return self
 
 
@@ -338,12 +384,24 @@ class _PostSelectionBase(_DecisionRecordBase):
             raise ValueError("selected market is not among candidates_considered")
         if not candidate.eligible:
             raise ValueError("selected market is not an eligible candidate")
-        if self.match_context.market_id != selected_id:
-            raise ValueError("match_context.market_id must equal the selected market")
-        if self.market_snapshot.market_id != selected_id:
-            raise ValueError("market_snapshot.market_id must equal the selected market")
-        if self.market_snapshot.side != selected_side:
-            raise ValueError("market_snapshot.side must equal the selected side")
+        # Bind the post-selection artifacts to the exact considered evidence:
+        # the recorded evidence cannot be swapped after selection while
+        # keeping the same market ID.
+        if selected_side != candidate.evaluation_side:
+            raise ValueError(
+                "selection.selected_side must equal the considered candidate's "
+                "evaluation_side"
+            )
+        if self.match_context != candidate.match_context:
+            raise ValueError(
+                "match_context must equal the considered candidate's recorded "
+                "match_context"
+            )
+        if self.market_snapshot != candidate.market_snapshot:
+            raise ValueError(
+                "market_snapshot must equal the considered candidate's recorded "
+                "market_snapshot"
+            )
         estimate = self.probability_estimate
         if estimate.market_id != selected_id or estimate.side != selected_side:
             raise ValueError(
@@ -408,27 +466,10 @@ class _PostSelectionBase(_DecisionRecordBase):
                     "a deterministic-stub selection requires "
                     "deterministic-selector metadata"
                 )
-        _check_fixture_set(
-            "match_context", self.match_context.provenance, self.provenance
-        )
-        _check_fixture_set(
-            "market_snapshot", self.market_snapshot.provenance, self.provenance
-        )
-        refs = (
-            self._explanation_refs()
-            + self._candidate_conflict_refs()
-            + _conflict_refs(self.match_context.data_quality)
-            + _conflict_refs(self.market_snapshot.data_quality)
-        )
-        _resolve_evidence_refs(
-            refs,
-            market_ids=frozenset(
-                c.market.market_id for c in self.candidates_considered
-            ),
-            match_ids=frozenset({self.match_context.match_id}),
-            snapshot_market_ids=frozenset({self.market_snapshot.market_id}),
-            fixture_source_ids=frozenset({self.provenance.fixture_set_id}),
-        )
+        # Fixture-set and evidence-reference checks for the top-level
+        # match/snapshot are covered by the base validator: both must equal
+        # the considered candidate's recorded evidence, which the base has
+        # already provenance-checked and pooled for reference resolution.
         return self
 
 

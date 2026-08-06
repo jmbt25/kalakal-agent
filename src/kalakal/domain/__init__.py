@@ -2,6 +2,7 @@
 
 from kalakal.domain.draft import SimulatedDiscordDraft
 from kalakal.domain.edge import EdgeAssessment, edge_inputs_digest
+from kalakal.domain.eligibility import derive_ineligibility_reasons
 from kalakal.domain.estimate import (
     EstimatorBasis,
     EstimatorRejection,
@@ -97,6 +98,7 @@ __all__ = [
     "StrictModel",
     "ToolCallRecord",
     "canonical_digest",
+    "derive_ineligibility_reasons",
     "edge_inputs_digest",
     "estimate_inputs_digest",
     "find_sensitive_content",

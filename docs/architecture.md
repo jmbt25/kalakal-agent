@@ -416,6 +416,14 @@ Candidate eligibility (orchestrator-enforced, before any model invocation):
   non-conflicting — no estimator-consumed field named in `missing_fields`, and no
   conflict whose `field_path` touches an estimator-consumed field — are exposed
   to the agent as selectable candidates.
+- Eligibility derivation is one shared pure function (the domain
+  `derive_ineligibility_reasons` evaluator; stable reason order `NOT_OPEN`,
+  `ESTIMATOR_INPUT_MISSING`, `ESTIMATOR_INPUT_CONFLICTED`), used by the
+  orchestrator to compute results and re-run by the decision-record validator
+  over each persisted considered-candidate evidence bundle (§6.2.10), so a
+  record can never carry a forged eligibility result. It reads only the
+  candidate evidence — never the clock, scenario oracle fields, files, or
+  network.
 - Declared conflicts or data gaps on non-estimator evidence leave a candidate
   eligible; the agent sees the declared `data_quality` information, is instructed
   to abstain on conflicting or insufficient evidence, and has a reason-code
@@ -718,11 +726,33 @@ timeouts persist a `RunFailure` (§6.2.11) instead — never a partial
 `DecisionRecord`.
 
 Common to all three shapes: `run_id`, `schema_version`, the `RunRequest`, fixture
-provenance, candidates considered (with their §5.6 eligibility results), the
+provenance, `candidates_considered`, the
 run's validated selection/abstention output, `DecisionExplanation` (§6.2.8),
 model-invocation metadata (below), all audit/version fields (§6.1),
 state-transition history with timestamps, latency, reason codes, terminal
 `outcome` (`completed` | `abstained`).
+
+**Considered-candidate evidence bundles.** Each `candidates_considered` entry
+is the complete bounded evidence bundle examined during validation/selection —
+the `CandidateMarket`, its `MatchContext`, its `MarketSnapshot`, the explicit
+`evaluation_side` (which must match the snapshot's side), and the §5.6
+eligibility result. The result is non-forgeable: the record validator
+re-derives the exact ineligibility reasons from the embedded evidence via the
+shared pure evaluator (stable order `NOT_OPEN`, `ESTIMATOR_INPUT_MISSING`,
+`ESTIMATOR_INPUT_CONFLICTED`) and rejects any supplied result that differs —
+missing, extra, duplicated, reordered, or fabricated reasons all fail, and
+`eligible` must be true exactly when the derived tuple is empty. Bundles carry
+no scenario ID or oracle fields, keeping the selector's input surface
+oracle-free; market IDs and match IDs are unique across the entries, and every
+nested entity must belong to the record's fixture set.
+
+**Evidence-reference resolution.** In every shape, explanation evidence
+references and the typed-conflict references of all three nested entities
+resolve against the complete considered evidence: the considered market IDs,
+match IDs, snapshot IDs, and the record's fixture-source ID. A shape A
+explanation can therefore cite the considered match or snapshot that caused a
+selector abstention; references to anything not recorded in the considered
+evidence remain rejected.
 
 **Model-invocation metadata.** Every record carries `invocation_status`
 (`invoked` | `not_invoked`). When `invoked`: model ID, `prompt_version`, response
@@ -767,9 +797,12 @@ with exactly three source variants, discriminated by `abstention_source`:
   tool-call records must be absent — not fabricated and not represented
   with dummy values.
 
-All variants: selected market, `MatchContext`, `MarketSnapshot`,
+All variants: the *selected* post-selection artifacts — selected market,
+top-level `MatchContext`, top-level `MarketSnapshot`,
 `ProbabilityEstimate`, `EdgeAssessment`, `PolicyDecision`, and
-`SimulatedDiscordDraft` must be absent.
+`SimulatedDiscordDraft` — must be absent. The bounded evidence examined
+before abstention remains recorded inside the considered-candidate bundles,
+so shape A explanations and conflicts can still cite it.
 
 **Shape B — policy no-bet after selection** (`outcome: abstained`). Required:
 selected market, `MatchContext` refs with timestamps, `MarketSnapshot`,
@@ -782,6 +815,13 @@ selected market, `MatchContext` refs with timestamps, `MarketSnapshot`,
 `ProbabilityEstimate`, `EdgeAssessment`, `PolicyDecision` with
 `decision: "proceed"`, explanation, `SimulatedDiscordDraft`, and full
 audit/version metadata.
+
+**Exact-evidence binding on shapes B and C.** The selected side must equal
+the selected consideration's `evaluation_side`, and the top-level
+`MatchContext` and `MarketSnapshot` must equal — field for field, not merely
+by ID — the evidence recorded in that consideration's bundle. Evidence can
+therefore never be swapped or altered after selection while retaining the
+same market ID.
 
 **Selection-source attribution on shapes B and C.** Both post-selection shapes
 carry `selection_source` (`"agent"` | `"deterministic_stub"`), owned by the
@@ -818,7 +858,12 @@ with `invocation_status: "invoked"` or any model metadata; a
 `"deterministic_stub"` source without `DeterministicSelectorMetadata`;
 `DeterministicSelectorMetadata` present with any non-stub source;
 `abstention_source: "deterministic_stub"` with reason `NO_VALID_CANDIDATES`
-or with zero eligible candidates; and a `DecisionExplanation` whose `source`
+or with zero eligible candidates; a considered-candidate eligibility result
+differing from the one derived from its embedded evidence (missing, extra,
+duplicated, reordered, or fabricated reasons); shape B or C whose top-level
+`MatchContext` or `MarketSnapshot` differs from the selected consideration's
+recorded evidence, or whose selected side differs from that consideration's
+`evaluation_side`; and a `DecisionExplanation` whose `source`
 contradicts the record's source attribution or invocation status.
 
 Invariants: immutable after the terminal write (§9.7); passes the decision-record
