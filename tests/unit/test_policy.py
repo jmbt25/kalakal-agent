@@ -1003,8 +1003,10 @@ class TestFixtureScenarios:
 
     def test_conflicting_evidence_check_details(self, repo: FixtureRepository) -> None:
         scenario = repo.load_scenario("conflicting-evidence")
-        # The recorded end-to-end outcome stays an agent abstention; policy
-        # evaluation here is the independent defense-in-depth layer.
+        # The recorded end-to-end outcome stays a selector abstention (agent
+        # in the primary composition, deterministic stub in the test-only
+        # composition, §5.10); policy evaluation here is the independent
+        # defense-in-depth layer.
         assert scenario.expected_outcome_class == "agent_abstention"
         decision = evaluate_bundle(scenario, scenario.candidates[0])
         assert decision.decision == "no_bet"

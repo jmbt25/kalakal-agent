@@ -18,6 +18,7 @@ from kalakal.domain.estimate import ProbabilityEstimate
 from kalakal.domain.explanation import DecisionExplanation
 from kalakal.domain.invocation import (
     Abstention,
+    DeterministicSelectorMetadata,
     MarketSelection,
     ModelInvocationInvoked,
     ModelInvocationMetadata,
@@ -35,6 +36,7 @@ from kalakal.domain.primitives import (
     Identifier,
     LatencyMs,
     RunState,
+    SelectionSource,
     StrictModel,
     UtcDatetime,
     VersionStr,
@@ -206,14 +208,25 @@ class _DecisionRecordBase(StrictModel):
                 "explanation prompt_version must match the invocation prompt_version"
             )
 
+    def _require_orchestrator_explanation(self, path_name: str) -> None:
+        # The DecisionExplanation validator already forces the deterministic
+        # explanation_template_version and forbids prompt/model refs for this
+        # source; only the source itself is checked here.
+        if self.explanation.source != "orchestrator":
+            raise ValueError(
+                f"{path_name} requires an orchestrator-sourced explanation"
+            )
+
 
 class PreSelectionAbstentionRecord(_DecisionRecordBase):
-    """Shape A — pre-selection abstention, agent or orchestrator variant."""
+    """Shape A — pre-selection abstention: agent, orchestrator, or
+    deterministic-stub variant."""
 
     outcome: Literal["abstained"]
     abstention_source: AbstentionSource
     selection: Abstention
     model_invocation: ModelInvocationMetadata
+    deterministic_selector: DeterministicSelectorMetadata | None = None
 
     @model_validator(mode="after")
     def _check_shape(self) -> PreSelectionAbstentionRecord:
@@ -234,17 +247,17 @@ class PreSelectionAbstentionRecord(_DecisionRecordBase):
                 raise ValueError(
                     "an agent abstention requires at least one eligible candidate"
                 )
-        else:
+            if self.deterministic_selector is not None:
+                raise ValueError(
+                    "an agent abstention must not carry deterministic-selector metadata"
+                )
+        elif self.abstention_source == "orchestrator":
             if not isinstance(self.model_invocation, ModelInvocationNotInvoked):
                 raise ValueError(
                     "an orchestrator abstention requires invocation_status "
                     "'not_invoked' with no model metadata"
                 )
-            if self.explanation.source != "orchestrator":
-                raise ValueError(
-                    "an orchestrator abstention requires an orchestrator-sourced "
-                    "explanation"
-                )
+            self._require_orchestrator_explanation("an orchestrator abstention")
             if self.selection.abstain_reason_code != ORCHESTRATOR_ONLY_ABSTAIN_REASON:
                 raise ValueError(
                     "an orchestrator abstention requires reason NO_VALID_CANDIDATES"
@@ -252,6 +265,32 @@ class PreSelectionAbstentionRecord(_DecisionRecordBase):
             if eligible_count > 0:
                 raise ValueError(
                     "NO_VALID_CANDIDATES requires zero eligible candidates"
+                )
+            if self.deterministic_selector is not None:
+                raise ValueError(
+                    "an orchestrator abstention must not carry "
+                    "deterministic-selector metadata"
+                )
+        else:
+            if not isinstance(self.model_invocation, ModelInvocationNotInvoked):
+                raise ValueError(
+                    "a deterministic-stub abstention requires invocation_status "
+                    "'not_invoked' with no model metadata"
+                )
+            self._require_orchestrator_explanation("a deterministic-stub abstention")
+            if self.selection.abstain_reason_code == ORCHESTRATOR_ONLY_ABSTAIN_REASON:
+                raise ValueError(
+                    "NO_VALID_CANDIDATES is reserved for the orchestrator variant"
+                )
+            if eligible_count == 0:
+                raise ValueError(
+                    "a deterministic-stub abstention requires at least one "
+                    "eligible candidate"
+                )
+            if self.deterministic_selector is None:
+                raise ValueError(
+                    "a deterministic-stub abstention requires "
+                    "deterministic-selector metadata"
                 )
         _resolve_evidence_refs(
             self._explanation_refs() + self._candidate_conflict_refs(),
@@ -266,15 +305,22 @@ class PreSelectionAbstentionRecord(_DecisionRecordBase):
 
 
 class _PostSelectionBase(_DecisionRecordBase):
-    """Fields and invariants shared by shapes B and C (after a selection)."""
+    """Fields and invariants shared by shapes B and C (after a selection).
 
+    ``selection_source`` is record-layer source attribution (§6.2.10): the
+    bounded agent or the test-only deterministic stub selector (§5.10). It is
+    never taken from model output.
+    """
+
+    selection_source: SelectionSource
     selection: MarketSelection
     match_context: MatchContext
     market_snapshot: MarketSnapshot
     probability_estimate: ProbabilityEstimate
     edge_assessment: EdgeAssessment
     policy_decision: PolicyDecision
-    model_invocation: ModelInvocationInvoked
+    model_invocation: ModelInvocationMetadata
+    deterministic_selector: DeterministicSelectorMetadata | None = None
 
     @model_validator(mode="after")
     def _check_post_selection(self) -> _PostSelectionBase:
@@ -339,7 +385,29 @@ class _PostSelectionBase(_DecisionRecordBase):
                     f"estimate basis {field_name} must equal the recorded "
                     "match-context value"
                 )
-        self._require_agent_explanation(self.model_invocation)
+        if self.selection_source == "agent":
+            if not isinstance(self.model_invocation, ModelInvocationInvoked):
+                raise ValueError(
+                    "an agent selection requires invocation_status 'invoked' "
+                    "with full model metadata"
+                )
+            self._require_agent_explanation(self.model_invocation)
+            if self.deterministic_selector is not None:
+                raise ValueError(
+                    "an agent selection must not carry deterministic-selector metadata"
+                )
+        else:
+            if not isinstance(self.model_invocation, ModelInvocationNotInvoked):
+                raise ValueError(
+                    "a deterministic-stub selection requires invocation_status "
+                    "'not_invoked' with no model metadata"
+                )
+            self._require_orchestrator_explanation("a deterministic-stub selection")
+            if self.deterministic_selector is None:
+                raise ValueError(
+                    "a deterministic-stub selection requires "
+                    "deterministic-selector metadata"
+                )
         _check_fixture_set(
             "match_context", self.match_context.provenance, self.provenance
         )

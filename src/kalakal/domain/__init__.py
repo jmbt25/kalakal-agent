@@ -12,6 +12,7 @@ from kalakal.domain.explanation import DecisionExplanation, KeyFactor
 from kalakal.domain.failure import FailedModelAttempt, RunFailure
 from kalakal.domain.invocation import (
     Abstention,
+    DeterministicSelectorMetadata,
     MarketSelection,
     ModelCallUsage,
     ModelInvocationInvoked,
@@ -67,6 +68,7 @@ __all__ = [
     "DataQuality",
     "DecisionExplanation",
     "DecisionRecord",
+    "DeterministicSelectorMetadata",
     "EdgeAssessment",
     "EstimatorBasis",
     "EstimatorRejection",

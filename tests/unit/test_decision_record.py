@@ -34,14 +34,43 @@ class TestValidTerminalShapes:
         assert record.selection.abstain_reason_code == "NO_VALID_CANDIDATES"
         assert record.explanation.explanation_template_version == "template-1"
 
+    def test_shape_a_deterministic_stub_variant(self) -> None:
+        record = PreSelectionAbstentionRecord(**f.record_a_stub_kwargs())
+        assert record.abstention_source == "deterministic_stub"
+        assert record.model_invocation.invocation_status == "not_invoked"
+        assert record.selection.abstain_reason_code == "CONFLICTING_EVIDENCE"
+        assert any(c.eligible for c in record.candidates_considered)
+        assert record.explanation.source == "orchestrator"
+        assert record.explanation.explanation_template_version == "template-1"
+        assert record.deterministic_selector is not None
+        assert record.deterministic_selector.test_only is True
+
     def test_shape_b_policy_no_bet(self) -> None:
         record = PolicyNoBetRecord(**f.record_b_kwargs())
         assert record.outcome == "abstained"
+        assert record.selection_source == "agent"
         assert record.policy_decision.decision == "no_bet"
+
+    def test_shape_b_deterministic_stub_variant(self) -> None:
+        record = PolicyNoBetRecord(**f.record_b_stub_kwargs())
+        assert record.selection_source == "deterministic_stub"
+        assert record.model_invocation.invocation_status == "not_invoked"
+        assert record.explanation.source == "orchestrator"
+        assert record.explanation.explanation_template_version == "template-1"
+        assert record.deterministic_selector is not None
 
     def test_shape_c_completed_proceed(self) -> None:
         record = CompletedProceedRecord(**f.record_c_kwargs())
         assert record.outcome == "completed"
+        assert record.selection_source == "agent"
+        assert record.draft.is_simulation is True
+
+    def test_shape_c_deterministic_stub_variant(self) -> None:
+        record = CompletedProceedRecord(**f.record_c_stub_kwargs())
+        assert record.selection_source == "deterministic_stub"
+        assert record.model_invocation.invocation_status == "not_invoked"
+        assert record.explanation.source == "orchestrator"
+        assert record.deterministic_selector is not None
         assert record.draft.is_simulation is True
 
     @pytest.mark.parametrize(
@@ -49,17 +78,25 @@ class TestValidTerminalShapes:
         [
             f.record_a_agent_kwargs,
             f.record_a_orch_kwargs,
+            f.record_a_stub_kwargs,
             f.record_b_kwargs,
+            f.record_b_stub_kwargs,
             f.record_c_kwargs,
+            f.record_c_stub_kwargs,
         ],
-        ids=["a-agent", "a-orch", "b", "c"],
+        ids=["a-agent", "a-orch", "a-stub", "b", "b-stub", "c", "c-stub"],
     )
     def test_union_entry_point_accepts_each_shape(self, kwargs_fn: object) -> None:
         record = validate_decision_record(kwargs_fn())  # type: ignore[operator]
         assert record.run_id == f.RUN_ID
 
-    def test_json_round_trip_is_bit_stable(self) -> None:
-        record = CompletedProceedRecord(**f.record_c_kwargs())
+    @pytest.mark.parametrize(
+        "kwargs_fn",
+        [f.record_c_kwargs, f.record_c_stub_kwargs],
+        ids=["agent", "stub"],
+    )
+    def test_json_round_trip_is_bit_stable(self, kwargs_fn: object) -> None:
+        record = CompletedProceedRecord(**kwargs_fn())  # type: ignore[operator]
         dumped = record.model_dump_json()
         assert CompletedProceedRecord.model_validate_json(dumped) == record
         assert (
@@ -201,8 +238,8 @@ class TestShapeAInvariants:
     )
     @pytest.mark.parametrize(
         "base_kwargs_fn",
-        [f.record_a_agent_kwargs, f.record_a_orch_kwargs],
-        ids=["agent", "orchestrator"],
+        [f.record_a_agent_kwargs, f.record_a_orch_kwargs, f.record_a_stub_kwargs],
+        ids=["agent", "orchestrator", "stub"],
     )
     def test_post_selection_artifacts_absent_on_shape_a(
         self, artifact_field: str, base_kwargs_fn: object
@@ -219,6 +256,153 @@ class TestShapeAInvariants:
         kwargs[artifact_field] = artifacts[artifact_field]
         with pytest.raises(ValidationError):
             PreSelectionAbstentionRecord(**kwargs)
+
+
+class TestDeterministicStubSourceInvariants:
+    """Source/metadata truth table for the deterministic-stub variants."""
+
+    @pytest.mark.parametrize(
+        ("record_cls", "kwargs_fn"),
+        [
+            (PreSelectionAbstentionRecord, f.record_a_stub_kwargs),
+            (PolicyNoBetRecord, f.record_b_stub_kwargs),
+            (CompletedProceedRecord, f.record_c_stub_kwargs),
+        ],
+        ids=["a-stub", "b-stub", "c-stub"],
+    )
+    def test_stub_without_selector_metadata_rejected(
+        self, record_cls: type, kwargs_fn: object
+    ) -> None:
+        kwargs = kwargs_fn()  # type: ignore[operator]
+        kwargs["deterministic_selector"] = None
+        with pytest.raises(ValidationError, match="deterministic-selector metadata"):
+            record_cls(**kwargs)
+
+    @pytest.mark.parametrize(
+        ("record_cls", "kwargs_fn"),
+        [
+            (PreSelectionAbstentionRecord, f.record_a_agent_kwargs),
+            (PolicyNoBetRecord, f.record_b_kwargs),
+            (CompletedProceedRecord, f.record_c_kwargs),
+        ],
+        ids=["a-agent", "b-agent", "c-agent"],
+    )
+    def test_agent_source_with_selector_metadata_rejected(
+        self, record_cls: type, kwargs_fn: object
+    ) -> None:
+        kwargs = kwargs_fn()  # type: ignore[operator]
+        kwargs["deterministic_selector"] = f.make_selector_metadata()
+        with pytest.raises(
+            ValidationError, match="must not carry deterministic-selector"
+        ):
+            record_cls(**kwargs)
+
+    def test_orchestrator_variant_with_selector_metadata_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError, match="must not carry\\s+deterministic-selector"
+        ):
+            PreSelectionAbstentionRecord(
+                **f.record_a_orch_kwargs(
+                    deterministic_selector=f.make_selector_metadata()
+                )
+            )
+
+    @pytest.mark.parametrize(
+        ("record_cls", "kwargs_fn"),
+        [
+            (PreSelectionAbstentionRecord, f.record_a_stub_kwargs),
+            (PolicyNoBetRecord, f.record_b_stub_kwargs),
+            (CompletedProceedRecord, f.record_c_stub_kwargs),
+        ],
+        ids=["a-stub", "b-stub", "c-stub"],
+    )
+    def test_stub_with_invoked_metadata_rejected(
+        self, record_cls: type, kwargs_fn: object
+    ) -> None:
+        kwargs = kwargs_fn()  # type: ignore[operator]
+        kwargs["model_invocation"] = f.make_invoked()
+        with pytest.raises(ValidationError, match="not_invoked"):
+            record_cls(**kwargs)
+
+    @pytest.mark.parametrize(
+        ("record_cls", "kwargs_fn"),
+        [
+            (PreSelectionAbstentionRecord, f.record_a_stub_kwargs),
+            (PolicyNoBetRecord, f.record_b_stub_kwargs),
+            (CompletedProceedRecord, f.record_c_stub_kwargs),
+        ],
+        ids=["a-stub", "b-stub", "c-stub"],
+    )
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"model_id": "gemini-3.6-flash"},
+            {"prompt_version": "prompt-1"},
+            {"response_ids": ("resp-1",)},
+            {"usage": ()},
+            {"fallback_used": False},
+            {"tool_calls": ()},
+        ],
+    )
+    def test_stub_cannot_fabricate_model_metadata(
+        self, record_cls: type, kwargs_fn: object, extra: dict[str, object]
+    ) -> None:
+        kwargs = kwargs_fn()  # type: ignore[operator]
+        kwargs["model_invocation"] = {"invocation_status": "not_invoked", **extra}
+        with pytest.raises(ValidationError):
+            record_cls(**kwargs)
+
+    @pytest.mark.parametrize(
+        ("record_cls", "kwargs_fn"),
+        [
+            (PreSelectionAbstentionRecord, f.record_a_stub_kwargs),
+            (PolicyNoBetRecord, f.record_b_stub_kwargs),
+            (CompletedProceedRecord, f.record_c_stub_kwargs),
+        ],
+        ids=["a-stub", "b-stub", "c-stub"],
+    )
+    def test_stub_with_agent_explanation_rejected(
+        self, record_cls: type, kwargs_fn: object
+    ) -> None:
+        kwargs = kwargs_fn()  # type: ignore[operator]
+        kwargs["explanation"] = f.make_explanation("agent")
+        with pytest.raises(ValidationError, match="orchestrator-sourced"):
+            record_cls(**kwargs)
+
+    def test_stub_abstention_with_no_valid_candidates_reason_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="reserved for the orchestrator"):
+            PreSelectionAbstentionRecord(
+                **f.record_a_stub_kwargs(
+                    selection=Abstention(
+                        abstained=True,
+                        abstain_reason_code="NO_VALID_CANDIDATES",
+                    )
+                )
+            )
+
+    def test_stub_abstention_without_eligible_candidates_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="eligible candidate"):
+            PreSelectionAbstentionRecord(
+                **f.record_a_stub_kwargs(
+                    candidates_considered=(
+                        CandidateEligibility(
+                            market=f.make_candidate_market(),
+                            eligible=False,
+                            ineligibility_reasons=("ESTIMATOR_INPUT_MISSING",),
+                        ),
+                    )
+                )
+            )
+
+    def test_unknown_selection_source_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            PolicyNoBetRecord(**f.record_b_kwargs(selection_source="model"))
+
+    def test_selection_source_is_required(self) -> None:
+        kwargs = f.record_b_kwargs()
+        del kwargs["selection_source"]
+        with pytest.raises(ValidationError):
+            PolicyNoBetRecord(**kwargs)
 
 
 class TestShapeBCInvariants:

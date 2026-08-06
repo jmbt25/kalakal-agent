@@ -1,8 +1,11 @@
-"""Model-invocation metadata and selection/abstention output (§6.2.10, §5.2).
+"""Model-invocation, selector metadata, and selection/abstention output
+(§6.2.10, §6.2.13, §5.2).
 
 Two invocation shapes keep the record truthful: the ``not_invoked`` shape has
 no model fields at all, so model identity, responses, tokens, and tool calls
 can never be fabricated or dummy-valued for a run that made no model call.
+:class:`DeterministicSelectorMetadata` identifies the test-only deterministic
+selector (§5.10) the same way — structurally, with no model fields to fake.
 """
 
 from __future__ import annotations
@@ -137,8 +140,28 @@ ModelInvocationMetadata = Annotated[
 ]
 
 
+class DeterministicSelectorMetadata(StrictModel):
+    """Identity of the test-only deterministic selector (§5.10, §6.2.13).
+
+    Required on every ``deterministic_stub``-sourced record and forbidden on
+    every other source. It is structurally non-model: no model ID, prompt
+    version, response IDs, token counts, fallback data, or tool-call fields
+    exist, so a deterministic run can never dress up as a model invocation.
+    """
+
+    selector_id: Identifier
+    selector_version: VersionStr
+    test_only: StrictTrue
+
+
 class MarketSelection(StrictModel):
-    """The validated agent selection of one candidate market and side."""
+    """The validated selection of one candidate market and side.
+
+    Produced by whichever selector composition ran (the bounded agent or the
+    test-only deterministic stub). It deliberately carries no source field:
+    source attribution is owned by the application/record layer (§6.2.10), so
+    a model can never claim its own trust source.
+    """
 
     abstained: StrictFalse
     selected_market_id: Identifier

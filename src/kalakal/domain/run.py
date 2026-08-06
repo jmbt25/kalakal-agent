@@ -26,13 +26,16 @@ def _evaluation_time_default(data: dict[str, Any]) -> datetime:
 class RunRequest(StrictModel):
     """A validated request to execute one fixture run.
 
-    ``evaluation_time`` is the frozen UTC evaluation clock for reproducible
-    runs and is always non-null after validation. When omitted, its
-    validated-data default factory freezes it to the already supplied
-    ``requested_at`` (no wall clock is read inside the domain model); an
-    explicit null fails the strict non-optional datetime type. Unknown
+    ``evaluation_time`` is the immutable UTC *origin* of the run's evaluation
+    clock (architecture §7.7) and is always non-null after validation. When
+    omitted, its validated-data default factory freezes it to the already
+    supplied ``requested_at`` (no wall clock is read inside the domain
+    model); an explicit null fails the strict non-optional datetime type.
+    The orchestrator derives each step's effective evaluation time as this
+    origin plus the monotonic elapsed duration since run start; a
+    zero-advance clock therefore evaluates at exactly this value. Unknown
     scenario and duplicate idempotency-key handling are orchestration
-    behavior (plan slice 5), not schema invariants.
+    behavior (plan slice 6), not schema invariants.
     """
 
     schema_version: Literal["1"]

@@ -1,7 +1,7 @@
 """SimulatedDiscordDraft contract (architecture.md §6.2.9).
 
 Structured duplicates of every mandatory element plus containment checks on
-the rendered text. Numeric text rendering is the slice 7 generator's job;
+the rendered text. Numeric text rendering is the slice 5 generator's job;
 this schema guarantees the labeled, synthetic, non-postable shape.
 """
 

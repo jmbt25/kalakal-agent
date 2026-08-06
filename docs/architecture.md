@@ -269,7 +269,7 @@ Trust zones:
 | Probability-estimator interface | Typed interface returning `ProbabilityEstimate`; MVP binding is the deterministic demo estimator (§10), versioned and labeled non-predictive. | Trusted core. Pure function of validated inputs; no LLM involvement. |
 | Edge and fee calculator | Deterministic integer arithmetic: gross edge, versioned synthetic fee model, net edge, breakeven. | Trusted core. Pure; reproducible from recorded inputs. |
 | Policy and abstention engine | Applies versioned deterministic rules: entry band, minimum net edge, freshness, completeness, duplicate-run checks. Emits `PolicyDecision` with per-check results. | Trusted core; **final authority**. Runs outside the LLM; the LLM cannot override it. |
-| Explanation generator | Produces the source-aware `DecisionExplanation` (§6.2.8): assembles the agent's qualitative output when the model ran (`source: "agent"`), or renders a versioned deterministic template for the pre-selection `NO_VALID_CANDIDATES` abstention (`source: "orchestrator"`); numbers are rendered from deterministic contracts only, never parsed from prose. | Straddles core/model boundary for agent-sourced narrative (validated, capped, non-authoritative); orchestrator-sourced narrative is deterministic core output. |
+| Explanation generator | Produces the source-aware `DecisionExplanation` (§6.2.8): assembles the agent's qualitative output when the model ran (`source: "agent"`), or renders a versioned deterministic template (`source: "orchestrator"`) for every no-model path — the pre-selection `NO_VALID_CANDIDATES` abstention and the test-only deterministic-stub selection/abstention paths (§5.10); numbers are rendered from deterministic contracts only, never parsed from prose. | Straddles core/model boundary for agent-sourced narrative (validated, capped, non-authoritative); orchestrator-sourced narrative is deterministic core output. |
 | Simulated Discord-draft generator | Deterministic template producing `SimulatedDiscordDraft` with the mandatory `SIMULATION — DO NOT POST` labeling (§6.2.9). Not LLM-generated, so required fields cannot be omitted. | Trusted core. |
 | Decision-record validator | Validates the assembled `DecisionRecord` (terminal-shape conformance and shape-conditional completeness per §6.2.10, version fields, reason codes, no forbidden content) before any Firestore write. | Last gate before persistence. |
 | Firestore audit repository | Creates the run document, writes progress markers, performs the single atomic terminal write, enforces idempotent creation. | Only the core writes; never the agent (§5.9). |
@@ -470,6 +470,51 @@ If the fallback model is used, the run records: `fallback_used: true`, the fallb
 model ID, the triggering reason (primary error class), and per-model token counts.
 The state machine does not branch (§7.5); only metadata and metrics change.
 
+### 5.10 Test-only deterministic selector composition
+
+The deterministic pipeline (plan slice 6) binds the `selecting` step to a
+**deterministic test-stub selector** instead of the agent. It exists for two
+purposes only: proving the orchestrator, generators, policy engine, and record
+assembly end-to-end without a model dependency, and serving as the clearly
+labeled emergency-demo path (§8.3). It is test-only, non-predictive, and never
+part of the primary demo composition once the agent exists.
+
+**Composition, not configuration.** The agent composition (plan slice 7) and
+the deterministic composition are separate, explicit composition roots or
+constructors. The stub is never a hidden production flag, a runtime fallback,
+or anything that pretends to be the model. Every record is truthful about
+which path ran: stub-sourced records carry `abstention_source`/
+`selection_source: "deterministic_stub"`,
+`invocation_status: "not_invoked"`, an orchestrator-sourced
+`DecisionExplanation`, and the `DeterministicSelectorMetadata` block
+(§6.2.13) — and no model metadata of any kind (§6.2.10).
+
+**Behavior (deterministic, documented, oracle-free).** The stub:
+
+1. Never reads a scenario's `expected_outcome_class` or
+   `expected_reason_code`, and never branches on scenario ID. It operates
+   only on the eligible candidate data it is given (the validated candidate
+   summaries and their declared `data_quality`).
+2. Examines eligible candidates in a documented deterministic order:
+   ascending lexicographic `market_id`.
+3. Selects the first eligible candidate whose declared evidence is fully
+   complete and conflict-free, and uses that candidate's explicit
+   evaluation side (fixture-declared and snapshot-validated — never
+   inferred from prose).
+4. If no such candidate exists, abstains: `CONFLICTING_EVIDENCE` when any
+   eligible candidate's evidence declares a (non-estimator) conflict,
+   otherwise `INSUFFICIENT_EVIDENCE` for declared (non-estimator) gaps —
+   mirroring the abstention instruction the agent receives on the same
+   evidence (§5.6).
+5. Never sees the zero-eligible case: that remains the orchestrator's §5.6
+   short-circuit (`NO_VALID_CANDIDATES`) *before* any selector execution, in
+   either composition.
+6. Never invents probabilities or numbers. The demo estimator (§10.1)
+   remains the only probability source; staleness remains a policy concern —
+   stale evidence is not filtered by the estimator-input eligibility filter,
+   so the stale-data scenario reaches `policy_checking` and terminates
+   `POLICY_STALE_DATA` (§5.6, §7.7) in this composition too.
+
 ## 6. Domain contracts
 
 Contracts are documented here and implemented later as typed schemas (plan slice 2).
@@ -492,7 +537,9 @@ No implementation classes exist in this phase.
   version/revision always; model ID + response metadata and `prompt_version` only
   when a model invocation occurred; the deterministic
   `explanation_template_version` only when an orchestrator-sourced explanation
-  was rendered; `estimator_id`/`estimator_version`, `policy_version`, and
+  was rendered; the deterministic selector's `selector_id`/`selector_version`
+  (§6.2.13) only when the test-only deterministic stub selector ran (§5.10);
+  `estimator_id`/`estimator_version`, `policy_version`, and
   `fee_model_version` only when the corresponding component ran (terminal shapes,
   §6.2.10). Fields for components that did not run are absent — never fabricated
   and never filled with dummy values.
@@ -508,8 +555,11 @@ No implementation classes exist in this phase.
 
 Required: `run_id` (server-derived), `idempotency_key` (client-supplied),
 `scenario_id`, `mode` (fixed literal `fixture`), `requested_at`, `schema_version`.
-Optional: `evaluation_time` — a frozen UTC clock for reproducible runs; defaults to
-now. Invariants: unknown `scenario_id` is a permanent failure; `mode` values other
+Optional: `evaluation_time` — the immutable UTC **origin** of the run's evaluation
+clock (§7.7), for reproducible and intentionally historical fixture runs; defaults
+to `requested_at`. Effective evaluation time during the run is derived from this
+origin plus monotonic elapsed time, never re-read from the wall clock (§7.7).
+Invariants: unknown `scenario_id` is a permanent failure; `mode` values other
 than `fixture` are rejected in the MVP; duplicate `idempotency_key` returns the
 existing run (§9.3).
 
@@ -616,7 +666,10 @@ Required: `decision` (`proceed` | `no_bet`), `reason_codes[]`, `checks[]` (each:
 `check_id`, `passed`, observed value, threshold, threshold source), `policy_version`,
 configured-rule provenance (e.g., the Jup Callers entry band 100,000–900,000 micro
 as externally sourced configuration per CLAUDE.md §8), `evaluated_at`, input
-digests. Invariants: derived solely from recorded deterministic inputs; the engine
+digests. `evaluated_at` records the run's **effective evaluation time at the
+moment policy checking begins** (§7.7) — the freshness checks read `valid_until`
+against exactly this value. Invariants: derived solely from recorded
+deterministic inputs; the engine
 is a pure function; the checks independently re-verify completeness (§6.2.12) and
 freshness of the selected market's evidence after selection, trusting no upstream
 stage; `no_bet` is a successful outcome, not an error.
@@ -681,26 +734,40 @@ model invocation occurred.
 
 **Shape A — pre-selection abstention** (`outcome: abstained`). No market was
 selected and every post-selection artifact is absent. One terminal field shape
-with exactly two source variants, discriminated by `abstention_source`:
+with exactly three source variants, discriminated by `abstention_source`:
 
 - **Agent variant** (`abstention_source: "agent"`): the agent abstained in
   `selecting`. Required: the validated agent abstention output
   (`abstained: true`, `selected_market_id: null`) with its agent
-  `abstain_reason_code`; an agent-produced `DecisionExplanation`
+  `abstain_reason_code` (never `NO_VALID_CANDIDATES`); at least one eligible
+  candidate; an agent-produced `DecisionExplanation`
   (`source: "agent"`); and `invocation_status: "invoked"` with model ID,
   response metadata, token usage, `prompt_version`, and the applicable
-  tool-call records.
+  tool-call records. `DeterministicSelectorMetadata` must be absent.
 - **Orchestrator variant** (`abstention_source: "orchestrator"`): used only by
   the deterministic `NO_VALID_CANDIDATES` short-circuit (§5.6). Required: a
   deterministic abstention output whose reason code is `NO_VALID_CANDIDATES`;
-  an orchestrator-produced `DecisionExplanation` (`source: "orchestrator"`)
+  zero eligible candidates; an orchestrator-produced `DecisionExplanation`
+  (`source: "orchestrator"`)
   carrying its deterministic `explanation_template_version` for audit
   reproducibility; and `invocation_status: "not_invoked"`. Model ID, response
   IDs, token usage, `prompt_version`, fallback-model data, and model tool-call
   records must be absent — not fabricated and not represented with dummy
-  values.
+  values. `DeterministicSelectorMetadata` must also be absent: this variant
+  fires before any selector runs.
+- **Deterministic-stub variant** (`abstention_source: "deterministic_stub"`):
+  the test-only deterministic selector (§5.10) abstained in `selecting`.
+  Required: at least one eligible candidate; a deterministic abstention
+  output whose reason code is **not** `NO_VALID_CANDIDATES` (that reason
+  stays orchestrator-only); an orchestrator-produced `DecisionExplanation`
+  (`source: "orchestrator"`) with its deterministic
+  `explanation_template_version`; `invocation_status: "not_invoked"`; and
+  the `DeterministicSelectorMetadata` block (§6.2.13). Model ID, response
+  IDs, token usage, `prompt_version`, fallback-model data, and model
+  tool-call records must be absent — not fabricated and not represented
+  with dummy values.
 
-Both variants: selected market, `MatchContext`, `MarketSnapshot`,
+All variants: selected market, `MatchContext`, `MarketSnapshot`,
 `ProbabilityEstimate`, `EdgeAssessment`, `PolicyDecision`, and
 `SimulatedDiscordDraft` must be absent.
 
@@ -716,15 +783,28 @@ selected market, `MatchContext` refs with timestamps, `MarketSnapshot`,
 `decision: "proceed"`, explanation, `SimulatedDiscordDraft`, and full
 audit/version metadata.
 
-Shapes B and C always follow an agent selection, so both require
-`invocation_status: "invoked"` and an agent-sourced `DecisionExplanation`.
+**Selection-source attribution on shapes B and C.** Both post-selection shapes
+carry `selection_source` (`"agent"` | `"deterministic_stub"`), owned by the
+application/record layer — the model-produced selection output itself carries
+no source field, so a model can never claim its own trust source. The two
+truthful variants of each shape:
+
+- `selection_source: "agent"` — requires `invocation_status: "invoked"` with
+  full model metadata and an agent-sourced `DecisionExplanation`;
+  `DeterministicSelectorMetadata` must be absent.
+- `selection_source: "deterministic_stub"` (test-only composition, §5.10) —
+  requires `invocation_status: "not_invoked"`, an orchestrator-sourced
+  `DecisionExplanation` with its deterministic
+  `explanation_template_version`, and the `DeterministicSelectorMetadata`
+  block (§6.2.13). Model ID, `prompt_version`, response IDs, token usage,
+  fallback data, and model tool-call records must be absent.
 
 Model-level validators reject every inconsistent combination, including at least:
 `outcome: completed` without a draft, or with a `no_bet` (or absent)
 `PolicyDecision`; a draft present with `outcome: abstained` or
 `decision: "no_bet"`; any post-selection artifact (`MatchContext`,
 `MarketSnapshot`, `ProbabilityEstimate`, `EdgeAssessment`, `PolicyDecision`,
-draft) present on shape A in either variant; a selected market without a
+draft) present on shape A in any variant; a selected market without a
 `PolicyDecision`; a `PolicyDecision` without both `ProbabilityEstimate` and
 `EdgeAssessment`; an abstention output that also names a selected market;
 `abstention_source: "orchestrator"` with any model ID, `prompt_version`,
@@ -732,9 +812,14 @@ response metadata, token usage, or model tool-call records;
 `abstention_source: "orchestrator"` with a reason code other than
 `NO_VALID_CANDIDATES`; `abstention_source: "agent"` with
 `invocation_status: "not_invoked"`; `abstention_source: "agent"` without the
-required model metadata; shape B or C with `invocation_status: "not_invoked"`;
-and a `DecisionExplanation` whose `source` contradicts the record's
-`abstention_source` or invocation status.
+required model metadata; shape B or C with `selection_source: "agent"` and
+`invocation_status: "not_invoked"`; any `"deterministic_stub"`-sourced record
+with `invocation_status: "invoked"` or any model metadata; a
+`"deterministic_stub"` source without `DeterministicSelectorMetadata`;
+`DeterministicSelectorMetadata` present with any non-stub source;
+`abstention_source: "deterministic_stub"` with reason `NO_VALID_CANDIDATES`
+or with zero eligible candidates; and a `DecisionExplanation` whose `source`
+contradicts the record's source attribution or invocation status.
 
 Invariants: immutable after the terminal write (§9.7); passes the decision-record
 validator before any write; no PII, credentials, or key material.
@@ -808,6 +893,24 @@ pre-selection abstention (`NO_VALID_CANDIDATES`) when none remain (§5.6); and
 the policy engine independently re-checks completeness and freshness after
 selection (§6.2.7).
 
+#### 6.2.13 DeterministicSelectorMetadata
+
+The strict, frozen identity block of the test-only deterministic selector
+(§5.10), carried by every `deterministic_stub`-sourced record:
+
+- `selector_id` — identifies the deterministic Slice 6 stub unambiguously
+- `selector_version` — the stub is versioned like every other recorded
+  component
+- `test_only` (invariant: literal `true`) — structurally marks the selector
+  as test-only/non-model
+
+Invariants: required exactly when a record's `abstention_source` or
+`selection_source` is `"deterministic_stub"`, and forbidden on every other
+source (§6.2.10); structurally non-model — no model ID, `prompt_version`,
+response IDs, token counts, fallback information, or tool-call fields exist
+on this contract, so a deterministic run can never be dressed up as a model
+invocation.
+
 ### 6.3 Post-MVP contracts (documented only — not implemented in the MVP)
 
 These exist so the Mode 4 design (§11) has stable vocabulary. They must not be
@@ -877,7 +980,7 @@ stateDiagram-v2
 |---|---|
 | `created` | Run document created (idempotent, §9.3); request accepted. |
 | `validating` | Scenario fixtures loaded and schema-validated; freshness pre-check; candidate-eligibility filter applied (§5.6); abort to `failed` on `FIXTURE_INVALID`/`SCENARIO_UNKNOWN`; short-circuit to `explaining` with the orchestrator-variant pre-selection abstention (`NO_VALID_CANDIDATES`, no model invocation) when no eligible candidate exists. |
-| `selecting` | Bounded agent invocation (§5); outcome is a validated selection or abstention. |
+| `selecting` | Bounded selector invocation — the agent (§5) in the primary composition, or the test-only deterministic stub selector (§5.10) in the deterministic composition; outcome is a validated selection or abstention. |
 | `estimating` | Deterministic estimator produces `ProbabilityEstimate` (memoized if already computed via tool call). |
 | `comparing` | Edge and fee calculator produces `EdgeAssessment`. |
 | `policy_checking` | Policy engine produces `PolicyDecision` (final authority; re-checks freshness against the evaluation clock). |
@@ -890,12 +993,16 @@ into earlier states, no transition out of a terminal state. `abstained` is a
 first-class success: it flows through `explaining` and `persisting` like any other
 run and produces a `DecisionRecord` in the terminal shape matching its path
 (§6.2.10) — the pre-selection abstention shape (A) with
-`abstention_source: "agent"` when the agent abstains in `selecting`, the same
+`abstention_source: "agent"` when the agent abstains in `selecting`
+(`"deterministic_stub"` when the test-only stub selector of §5.10 abstains
+there instead), the same
 shape with `abstention_source: "orchestrator"` and
 `invocation_status: "not_invoked"` when the eligibility filter leaves no
 candidates in `validating` (`NO_VALID_CANDIDATES`), and the policy no-bet shape
 (B) when the policy engine returns `no_bet` after selection. A `proceed`
-decision persists the completed shape (C) with its simulated draft. `failed` and
+decision persists the completed shape (C) with its simulated draft. Shapes B
+and C carry the record-layer `selection_source` attribution (`"agent"` or
+`"deterministic_stub"`) for the selector composition that ran. `failed` and
 `timed_out` persist a `RunFailure` (§6.2.11), never a partial `DecisionRecord`.
 
 ### 7.2 Idempotency
@@ -941,10 +1048,35 @@ structured logs (redaction-safe, correlation-ID-tagged) so the audit trail survi
 Reconciliation is documented in §9.8. Progress-marker write failures (non-terminal)
 are logged and ignored — they are best-effort observability, not audit.
 
-### 7.7 Input becomes stale during execution
+### 7.7 The evaluation clock, and input becoming stale during execution
 
-Freshness is evaluated against the run's evaluation clock at `policy_checking`, not
-only at load time. If an input's `valid_until` passes mid-run (e.g., during a slow
+The run's evaluation clock reconciles two requirements that a single frozen
+timestamp cannot: reproducible (possibly historical) evaluation origins, and
+freshness that can genuinely expire while a run executes.
+
+- `RunRequest.evaluation_time` (§6.2.1) is the **immutable UTC origin** of the
+  run's evaluation clock. When omitted it defaults to `requested_at`.
+- At run start, the orchestrator captures a monotonic start value. At each
+  step, the **effective evaluation time** is derived as
+  `request.evaluation_time + monotonic elapsed duration since run start`.
+  No wall-clock lookup occurs after run start.
+- The hard 60 s run deadline (§5.3, §7.4) is measured in the same monotonic
+  elapsed time.
+- `policy_checking` receives the effective evaluation time at the moment
+  policy checking begins, and `PolicyDecision.evaluated_at` records exactly
+  that value (§6.2.7).
+- Operational transition timestamps (§6.2.10 state history) may similarly be
+  derived as `requested_at + monotonic elapsed`, keeping operational time
+  distinct from an intentionally historical fixture evaluation origin.
+- Tests inject a fake clock, making elapsed time deterministic: a
+  short-lived synthetic input can become stale before `policy_checking`
+  while the run stays inside the 60 s deadline, and a zero-advance fake
+  clock evaluates every step at exactly the supplied `evaluation_time` —
+  which keeps the shipped fixture outcomes reproducible.
+
+Freshness is therefore evaluated against the effective evaluation time at
+`policy_checking`, not only at load time. If an input's `valid_until` passes
+mid-run (e.g., during a slow
 agent step), the policy engine returns `no_bet` with `POLICY_STALE_DATA` and the run
 terminates as `abstained` — a correct, auditable outcome rather than a failure.
 
@@ -1044,7 +1176,8 @@ hanging the recording.
 Contingency: if Vertex AI is temporarily unavailable at recording time, the fallback
 ladder is primary model → fallback model → graceful, auditable failure. Keep one
 previously completed fixture run available to walk through, and keep the
-deterministic no-LLM pipeline scenario (plan slice 5) available as a clearly labeled
+deterministic no-LLM pipeline composition (plan slice 6, §5.10) available as a
+clearly labeled
 emergency demonstration of the deterministic core.
 
 ## 9. Firestore and observability
@@ -1404,7 +1537,7 @@ Mode 5 is not a later slice and has no entry criteria — it is permanently excl
   Flagged as an organizer-side judgment call in
   [research/hackathon.md](research/hackathon.md).
 - ADK 2.x structured output combined with tools works on Gemini 3.5+ models as the
-  research indicates; verified concretely in plan slice 6 with fake-model tests and
+  research indicates; verified concretely in plan slice 7 with fake-model tests and
   one real smoke test.
 - Firestore free-tier quotas comfortably cover the workload (tens of runs/day).
 - The synthetic fee model is acceptable for the MVP because the real fee formula is

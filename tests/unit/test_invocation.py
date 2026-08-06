@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from kalakal.domain import (
     Abstention,
+    DeterministicSelectorMetadata,
     MarketSelection,
     ModelInvocationInvoked,
     ModelInvocationNotInvoked,
@@ -239,6 +240,50 @@ class TestModelInvocationNotInvoked:
     def test_wrong_status_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelInvocationNotInvoked(invocation_status="invoked")  # type: ignore[arg-type]
+
+
+class TestDeterministicSelectorMetadata:
+    def test_valid(self) -> None:
+        metadata = f.make_selector_metadata()
+        assert metadata.selector_id == "deterministic-stub"
+        assert metadata.test_only is True
+
+    def test_carries_exactly_the_three_identity_fields(self) -> None:
+        assert set(DeterministicSelectorMetadata.model_fields) == {
+            "selector_id",
+            "selector_version",
+            "test_only",
+        }
+
+    @pytest.mark.parametrize("value", [False, 1, "true", None])
+    def test_test_only_must_be_literal_true(self, value: object) -> None:
+        with pytest.raises(ValidationError):
+            f.make_selector_metadata(test_only=value)
+
+    @pytest.mark.parametrize("field", ["selector_id", "selector_version", "test_only"])
+    def test_required_fields(self, field: str) -> None:
+        kwargs = f.selector_metadata_kwargs()
+        del kwargs[field]
+        with pytest.raises(ValidationError):
+            DeterministicSelectorMetadata(**kwargs)
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"model_id": "gemini-3.6-flash"},
+            {"prompt_version": "prompt-1"},
+            {"response_ids": ("resp-1",)},
+            {"usage": ()},
+            {"tool_calls": ()},
+            {"fallback_used": False},
+            {"invocation_status": "invoked"},
+        ],
+    )
+    def test_model_shaped_fields_structurally_rejected(
+        self, extra: dict[str, object]
+    ) -> None:
+        with pytest.raises(ValidationError):
+            f.make_selector_metadata(**extra)
 
 
 class TestToolCallRecord:

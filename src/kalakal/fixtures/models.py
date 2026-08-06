@@ -30,6 +30,13 @@ from kalakal.domain.primitives import (
 from kalakal.domain.quality import DataQuality
 
 # Where each expected downstream outcome is decided (§5.6, §6.2.10, §7.1).
+# "agent_abstention" names a selector abstention decided in `selecting`; the
+# record's source attribution stays truthful per composition — abstention
+# source "agent" under the primary agent composition, "deterministic_stub"
+# under the test-only deterministic composition (§5.10) — with the same
+# expected reason code. Selection outcomes carry the analogous
+# selection-source attribution. The deterministic stub never reads these
+# oracle fields (§5.10).
 ExpectedOutcomeClass = Literal[
     "completed_proceed",
     "policy_no_bet",

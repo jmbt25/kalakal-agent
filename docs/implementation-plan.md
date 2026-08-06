@@ -96,17 +96,26 @@ Standing rules:
 - **Expected files:** `src/kalakal/domain/*.py` (one module per contract group),
   `src/kalakal/estimator/{interface,demo}.py`, `src/kalakal/edge/calculator.py`,
   `tests/unit/` for each.
-- **Acceptance criteria:** every §6.2 contract exists with its invariants enforced
+- **Acceptance criteria** (amended 2026-08-06 by the pre-Slice-5 alignment
+  pass, which added the truthful `deterministic_stub` source variants and the
+  record-layer `selection_source` attribution): every §6.2 contract exists
+  with its invariants enforced
   by validators (e.g., `is_synthetic` must be true, `is_predictive` false, label
   literal, micro/ppm ranges, UTC-only timestamps); `DecisionRecord` is conditional
   by outcome path — exactly the three terminal shapes of
   [architecture.md §6.2.10](architecture.md#6210-decisionrecord) validate
-  (pre-selection abstention with its two source variants, policy no-bet after
-  selection, completed proceed), model-level validators reject every
+  (pre-selection abstention with its three source variants, policy no-bet after
+  selection and completed proceed each with their agent and
+  deterministic-stub selection-source variants), model-level validators reject
+  every
   inconsistent conditional-field combination, and model-invocation metadata is
   truthful — `invocation_status: "not_invoked"` records carry no model ID,
   prompt version, responses, tokens, or model tool calls (absent, never
-  dummy-valued); `DecisionExplanation` enforces its source-conditional fields
+  dummy-valued), and `deterministic_stub`-sourced records require the
+  `DeterministicSelectorMetadata` block of
+  [architecture.md §6.2.13](architecture.md#6213-deterministicselectormetadata)
+  while every other source forbids it; `DecisionExplanation` enforces its
+  source-conditional fields
   (agent: `prompt_version` + model metadata ref, no template version;
   orchestrator: `explanation_template_version`, no prompt version or model
   metadata ref); the shared `DataQuality` block of
@@ -127,20 +136,32 @@ Standing rules:
 - **Tests and checks:** unit tests per contract (valid, invalid, boundary),
   written as parametrized pytest cases — no new dependency (e.g., Hypothesis) is
   needed or added. Required coverage:
-  - both valid source variants of the pre-selection abstention shape (agent
+  - all three valid source variants of the pre-selection abstention shape
+    (agent
     variant with `invocation_status: "invoked"` and full model metadata;
     orchestrator variant with reason `NO_VALID_CANDIDATES`,
-    `invocation_status: "not_invoked"`, and no model metadata), plus the valid
-    policy no-bet and completed-proceed shapes;
+    `invocation_status: "not_invoked"`, and no model metadata;
+    deterministic-stub variant with at least one eligible candidate, a
+    non-orchestrator reason code, `invocation_status: "not_invoked"`,
+    deterministic-selector metadata, and an orchestrator-sourced
+    explanation), plus the valid
+    policy no-bet and completed-proceed shapes in both their agent and
+    deterministic-stub selection-source variants;
   - rejection of every source/model-metadata mismatch: orchestrator source with
     a model ID, prompt version, responses, tokens, or model tool calls; agent
     source with `invocation_status: "not_invoked"`; agent source without the
     required model metadata; orchestrator source with a reason code other than
-    `NO_VALID_CANDIDATES`; either variant containing a selected market or any
-    post-selection artifact;
+    `NO_VALID_CANDIDATES`; any variant containing a selected market or any
+    post-selection artifact on shape A; every deterministic-stub shape
+    structurally rejecting model IDs, prompts, responses, tokens, fallback
+    data, and model tool calls; a `deterministic_stub` source without
+    selector metadata; selector metadata paired with any non-stub source; a
+    stub abstention with reason `NO_VALID_CANDIDATES` or zero eligible
+    candidates; a stub selection or abstention with an agent-sourced
+    explanation;
   - rejection of the remaining inconsistent conditional fields (e.g., a draft
     with `no_bet` or `abstained`, `completed` without a draft, shape B or C
-    with `invocation_status: "not_invoked"`);
+    with `selection_source: "agent"` and `invocation_status: "not_invoked"`);
   - `DecisionExplanation` conditional-field validation in both directions for
     both sources;
   - structural invalidity vs. explicitly incomplete data: malformed types,
@@ -223,47 +244,135 @@ Standing rules:
 - **Dependencies:** slices 2–3.
 - **Suggested commit boundary:** one commit: "deterministic policy and abstention
   engine".
-- **Rollback:** revert; consumers arrive in slice 5.
+- **Rollback:** revert; consumers arrive in slices 5–6.
 
-## Slice 5 — Deterministic pipeline without an LLM
+## Slice 5 — Explanation and simulated-draft generation
 
-- **Goal:** the run orchestrator and state machine executing end-to-end with a
-  deterministic stand-in selector (no model calls): fixtures → validation →
-  selection stub → estimate → edge → policy → record assembly.
-- **Expected files:** `src/kalakal/orchestrator/{runner,states}.py`, in-memory run
+- **Goal:** the explanation generator producing the source-aware
+  `DecisionExplanation` and the deterministic `SIMULATION — DO NOT POST`
+  draft template, built before the pipeline so slice 6 can assemble complete,
+  valid terminal records: versioned deterministic orchestrator explanations
+  (covering the eligibility-filter `NO_VALID_CANDIDATES` abstention and the
+  deterministic-stub selection/abstention paths of
+  [architecture.md §5.10](architecture.md#510-test-only-deterministic-selector-composition)),
+  plus the agent-sourced explanation assembly contracts that slice 7 feeds
+  with real validated model output later.
+- **Expected files:** `src/kalakal/explain/generator.py`,
+  `src/kalakal/draft/simulated.py`, `tests/unit/` for both.
+- **Acceptance criteria:** `DecisionExplanation` assembled and validated for both
+  sources — `source: "orchestrator"` with its deterministic
+  `explanation_template_version` (and no prompt version or model metadata ref)
+  for every no-model path: the pre-selection `NO_VALID_CANDIDATES` abstention
+  and the deterministic-stub selection and abstention variants of
+  [architecture.md §6.2.10](architecture.md#6210-decisionrecord);
+  `source: "agent"` assembly with `prompt_version` and model metadata ref,
+  implemented against the validated structured-output contract of
+  architecture §5.2 and exercised with synthetic validated agent output in
+  unit tests (no ADK, no model call — slice 7 supplies real output later) —
+  with evidence refs
+  resolving, length caps enforced, and numbers only from deterministic
+  contracts; `SimulatedDiscordDraft` contains every mandatory element of
+  [architecture.md §6.2.9](architecture.md#629-simulateddiscorddraft) in one
+  message, uses the synthetic link domain, and is produced iff the policy decision
+  is `proceed`; abstention and no-bet runs produce a documented
+  `DecisionExplanation` instead.
+- **Tests and checks:** template tests asserting each mandatory element's presence
+  (label, event + side, synthetic link, ask price, confidence with non-predictive
+  label, edge, `#nfa`, timestamp, expiry warning); one-draft-per-(run, market,
+  side) test; explanation-validation rejection tests, including
+  source-conditional field mismatches for both `DecisionExplanation` sources;
+  orchestrator-template tests covering all three no-model paths
+  (`NO_VALID_CANDIDATES`, stub selection, stub abstention).
+- **Explicit exclusions:** no Discord API, no real `jup.ag` links, no LLM-composed
+  draft text; no orchestrator or state machine (slice 6); no ADK (slice 7).
+- **Dependencies:** slices 2–4.
+- **Suggested commit boundary:** one commit: "explanation assembly and simulated
+  draft generation".
+- **Rollback:** revert; nothing depends on it until slice 6.
+
+## Slice 6 — Deterministic pipeline without an LLM
+
+- **Goal:** the run orchestrator and state machine executing end-to-end with
+  the test-only deterministic stub selector of
+  [architecture.md §5.10](architecture.md#510-test-only-deterministic-selector-composition)
+  (no model calls): fixtures → validation → deterministic selection →
+  estimate → edge → policy → explanation/draft (slice 5 generators) → record
+  assembly, producing fully valid `DecisionRecord`s in the
+  `deterministic_stub` source variants of
+  [architecture.md §6.2.10](architecture.md#6210-decisionrecord).
+- **Expected files:** `src/kalakal/orchestrator/{runner,states}.py`, the stub
+  selector module, in-memory run
   store, `tests/unit/test_orchestrator.py`,
   `tests/integration/test_pipeline_no_llm.py`.
 - **Acceptance criteria:** all states and transitions of
   [architecture.md §7](architecture.md#7-run-state-machine) implemented, strictly
   forward, terminals correct; every scenario runs to its expected terminal
-  (`completed`/`abstained`/`failed`) with a `DecisionRecord` in the correct
-  terminal shape of
-  [architecture.md §6.2.10](architecture.md#6210-decisionrecord) or a
-  `RunFailure`; the candidate-eligibility filter of
+  (`completed`/`abstained`/`failed`) with a truthful `DecisionRecord` or
+  `RunFailure`: `completed_proceed` scenarios produce shape C and
+  `policy_no_bet` scenarios shape B, both with
+  `selection_source: "deterministic_stub"`, `invocation_status:
+  "not_invoked"`, an orchestrator-sourced explanation, and
+  `DeterministicSelectorMetadata`
+  ([architecture.md §6.2.13](architecture.md#6213-deterministicselectormetadata));
+  `agent_abstention`-class scenarios produce shape A with
+  `abstention_source: "deterministic_stub"` and the scenario's expected
+  reason code; `orchestrator_abstention` scenarios keep the unchanged
+  orchestrator variant (`NO_VALID_CANDIDATES`,
+  `invocation_status: "not_invoked"`, no selector metadata — decided before
+  selector execution); no record on any path carries model metadata; the
+  candidate-eligibility filter of
   [architecture.md §5.6](architecture.md#56-incomplete-conflicting-or-stale-input--abstention)
   implemented — only candidates with complete, non-conflicting
-  estimator-consumed evidence reach the selector, and an all-ineligible
+  estimator-consumed evidence reach the selector (staleness is never an
+  eligibility reason, so the shipped `stale-data` scenario reaches
+  `policy_checking` and terminates `POLICY_STALE_DATA`), and an
+  all-ineligible
   candidate set terminates before any selector invocation with the
-  orchestrator-variant pre-selection abstention
-  (`abstention_source: "orchestrator"`, reason `NO_VALID_CANDIDATES`,
-  `invocation_status: "not_invoked"`, no model metadata); the hard 60 s run
-  deadline enforced; frozen `evaluation_time`
-  honored; the
+  orchestrator-variant pre-selection abstention; the stub selector behaves
+  exactly per architecture §5.10 — it never reads
+  `expected_outcome_class` or `expected_reason_code`, never branches on
+  scenario ID, operates only on the eligible candidate data it is given,
+  examines candidates in documented ascending-lexicographic `market_id`
+  order, abstains `CONFLICTING_EVIDENCE` on declared non-estimator
+  conflicts and `INSUFFICIENT_EVIDENCE` on declared non-estimator gaps
+  insufficient for selection, otherwise selects deterministically and uses
+  that candidate's explicit evaluation side, and never invents
+  probabilities (the demo estimator remains the only probability source);
+  the evaluation clock implemented per
+  [architecture.md §7.7](architecture.md#77-the-evaluation-clock-and-input-becoming-stale-during-execution) —
+  effective evaluation time = the immutable `evaluation_time` origin +
+  monotonic elapsed since run start, no wall-clock lookup after run start,
+  the hard 60 s deadline on monotonic elapsed, policy checking receiving
+  the effective time at its start with `PolicyDecision.evaluated_at`
+  recording exactly that value; the
   stale-during-execution path (§7.7) reachable in a test.
 - **Tests and checks:** state-machine transition tests (allowed + rejected
-  transitions); per-scenario end-to-end tests; eligibility-filter tests (mixed
+  transitions); per-scenario end-to-end tests asserting the truthful
+  stub-source records above; eligibility-filter tests (mixed
   eligible/ineligible candidate sets expose only eligible candidates to the
   selector; an all-ineligible set produces the orchestrator-variant abstention
-  with truthful `not_invoked` metadata); timeout test with a fake clock;
-  idempotent memoization test (one recorded computation per market).
-- **Explicit exclusions:** no ADK, no Vertex, no Firestore, no HTTP; the selector
-  stub is clearly marked test-only and is replaced (not toggled) in slice 6.
-- **Dependencies:** slices 2–4.
+  with truthful `not_invoked` metadata); fake-clock tests — injected fake
+  clock making elapsed time deterministic, a short-lived synthetic input
+  becoming stale before `policy_checking` while inside the 60 s deadline,
+  and a zero-advance run evaluating every step at exactly the supplied
+  `evaluation_time` (shipped fixture outcomes reproducible); timeout test
+  with a fake clock;
+  idempotent memoization test (one recorded computation per market); an
+  oracle-independence test proving the stub's input surface excludes the
+  scenario oracle fields.
+- **Explicit exclusions:** no ADK, no Vertex, no Firestore, no HTTP; the
+  stub selector is test-only and structurally marked by its §6.2.13
+  metadata; it is never a hidden production flag or a fallback pretending to
+  be the model — slice 7 adds the agent as a separate, explicit composition
+  root while this pipeline remains the clearly labeled emergency-demo
+  composition (§5.10, §8.3).
+- **Dependencies:** slices 2–5.
 - **Suggested commit boundary:** one commit: "deterministic run pipeline and state
   machine".
-- **Rollback:** revert; later slices replace the stub rather than extending it.
+- **Rollback:** revert; slice 7 composes the agent alongside this pipeline
+  rather than extending the stub.
 
-## Slice 6 — ADK/Vertex adapter with fake-model tests
+## Slice 7 — ADK/Vertex adapter with fake-model tests
 
 - **Goal:** the bounded `LlmAgent` of
   [architecture.md §5](architecture.md#5-agent-boundaries): five read-only tools,
@@ -272,7 +381,16 @@ Standing rules:
 - **Expected files:** `src/kalakal/agent/{agent,tools,schemas,prompts/,model_client}.py`,
   fake model client for tests, `tests/unit/test_agent_validation.py`,
   `tests/integration/test_agent_fake_model.py`.
-- **Acceptance criteria:** agent invocation replaces the slice-5 stub; tool surface
+- **Acceptance criteria:** the agent becomes the primary selector composition
+  through its own explicit composition root, while the slice 6 deterministic
+  pipeline remains available as a separately and explicitly labeled
+  emergency-demo composition (§5.10, §8.3) — separate composition roots or
+  constructors, never a hidden production flag and never a fallback
+  pretending to be the model, with every record truthful about which path
+  ran (agent-sourced records carry `invocation_status: "invoked"` with full
+  model metadata; stub-sourced records carry the §6.2.13 selector metadata
+  and no model metadata); agent runs feed validated structured output into
+  the slice 5 agent-sourced explanation assembly; tool surface
   is exactly the five tools (asserted by a test); the architecture §5.3 bounds
   enforced (8 tool calls, 4 turns, 15 s per model call, 45 s agent/model budget, at
   most one repair or retry, budget-guarded fallback); malformed output triggers one
@@ -298,43 +416,11 @@ Standing rules:
   verifies structured output + tools on `gemini-3.6-flash`.
 - **Explicit exclusions:** no side-effecting tools; no Firestore writes from any
   tool handler; no API keys (ADC only); no autonomous anything.
-- **Dependencies:** slice 5.
+- **Dependencies:** slice 6.
 - **Suggested commit boundary:** one commit: "bounded ADK agent with fake-model
   test suite".
-- **Rollback:** revert to the slice-5 deterministic pipeline (still fully
+- **Rollback:** revert to the slice-6 deterministic pipeline (still fully
   functional for the emergency demo path).
-
-## Slice 7 — Explanation and simulated-draft generation
-
-- **Goal:** the explanation generator producing the source-aware
-  `DecisionExplanation` (agent qualitative output merged with deterministic
-  numbers, or the versioned deterministic template for orchestrator-sourced
-  pre-selection abstentions) and the deterministic `SIMULATION — DO NOT POST`
-  draft template.
-- **Expected files:** `src/kalakal/explain/generator.py`,
-  `src/kalakal/draft/simulated.py`, `tests/unit/` for both.
-- **Acceptance criteria:** `DecisionExplanation` assembled and validated for both
-  sources — `source: "agent"` with `prompt_version` and model metadata ref when
-  the agent ran; `source: "orchestrator"` with its deterministic
-  `explanation_template_version` (and no prompt version or model metadata ref)
-  for the pre-agent `NO_VALID_CANDIDATES` abstention — with evidence refs
-  resolving, length caps enforced, and numbers only from deterministic
-  contracts; `SimulatedDiscordDraft` contains every mandatory element of
-  [architecture.md §6.2.9](architecture.md#629-simulateddiscorddraft) in one
-  message, uses the synthetic link domain, and is produced iff the policy decision
-  is `proceed`; abstention and no-bet runs produce a documented
-  `DecisionExplanation` instead.
-- **Tests and checks:** template tests asserting each mandatory element's presence
-  (label, event + side, synthetic link, ask price, confidence with non-predictive
-  label, edge, `#nfa`, timestamp, expiry warning); one-draft-per-(run, market,
-  side) test; explanation-validation rejection tests, including
-  source-conditional field mismatches for both `DecisionExplanation` sources.
-- **Explicit exclusions:** no Discord API, no real `jup.ag` links, no LLM-composed
-  draft text.
-- **Dependencies:** slice 6.
-- **Suggested commit boundary:** one commit: "explanation assembly and simulated
-  draft generation".
-- **Rollback:** revert; the pipeline still terminates with records, minus prose.
 
 ## Slice 8 — Firestore audit persistence and emulator tests
 
@@ -355,7 +441,7 @@ Standing rules:
   test (write fails → record present in captured logs).
 - **Explicit exclusions:** no composite indexes, no TTL policy, no security-rule
   deployment, no cloud resources created; emulator only.
-- **Dependencies:** slice 5 (record assembly); slots in behind the orchestrator.
+- **Dependencies:** slice 6 (record assembly); slots in behind the orchestrator.
 - **Suggested commit boundary:** one commit: "Firestore audit repository with fake
   and emulator test suites".
 - **Rollback:** switch orchestrator wiring back to the in-memory store (a code
@@ -380,7 +466,7 @@ Standing rules:
 - **Explicit exclusions:** no public exposure decisions here (deployment is slice
   10); no JavaScript framework — server-rendered minimalism; no multi-user
   anything.
-- **Dependencies:** slices 6–8.
+- **Dependencies:** slices 7–8.
 - **Suggested commit boundary:** one commit: "minimal HTTP and demo interface".
 - **Rollback:** revert; the pipeline remains usable via tests/CLI entrypoint.
 

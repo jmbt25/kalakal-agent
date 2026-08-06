@@ -21,6 +21,7 @@ from kalakal.domain import (
     DataConflict,
     DataQuality,
     DecisionExplanation,
+    DeterministicSelectorMetadata,
     EdgeAssessment,
     EstimatorBasis,
     EvidenceRef,
@@ -374,6 +375,20 @@ def make_not_invoked() -> ModelInvocationNotInvoked:
     return ModelInvocationNotInvoked(invocation_status="not_invoked")
 
 
+def selector_metadata_kwargs(**over: Any) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "selector_id": "deterministic-stub",
+        "selector_version": "1.0.0",
+        "test_only": True,
+    }
+    kwargs.update(over)
+    return kwargs
+
+
+def make_selector_metadata(**over: Any) -> DeterministicSelectorMetadata:
+    return DeterministicSelectorMetadata(**selector_metadata_kwargs(**over))
+
+
 def draft_kwargs(**over: Any) -> dict[str, Any]:
     warning = "Regenerate this draft if stale; prices move before posting."
     draft_text = (
@@ -565,6 +580,25 @@ def record_a_orch_kwargs(**over: Any) -> dict[str, Any]:
     return kwargs
 
 
+def record_a_stub_kwargs(**over: Any) -> dict[str, Any]:
+    kwargs = _record_common_kwargs()
+    kwargs.update(
+        {
+            "explanation": make_explanation("orchestrator"),
+            "outcome": "abstained",
+            "abstention_source": "deterministic_stub",
+            "selection": Abstention(
+                abstained=True, abstain_reason_code="CONFLICTING_EVIDENCE"
+            ),
+            "model_invocation": make_not_invoked(),
+            "deterministic_selector": make_selector_metadata(),
+            "transitions": make_transitions(A_AGENT_PATH),
+        }
+    )
+    kwargs.update(over)
+    return kwargs
+
+
 def record_b_kwargs(**over: Any) -> dict[str, Any]:
     match = make_match_context()
     snapshot = make_market_snapshot()
@@ -574,6 +608,7 @@ def record_b_kwargs(**over: Any) -> dict[str, Any]:
     kwargs.update(
         {
             "outcome": "abstained",
+            "selection_source": "agent",
             "selection": MarketSelection(
                 abstained=False,
                 selected_market_id=MARKET_ID,
@@ -602,5 +637,26 @@ def record_c_kwargs(**over: Any) -> dict[str, Any]:
             "transitions": make_transitions(C_PATH),
         }
     )
+    kwargs.update(over)
+    return kwargs
+
+
+def _stub_selection_overrides() -> dict[str, Any]:
+    return {
+        "selection_source": "deterministic_stub",
+        "explanation": make_explanation("orchestrator"),
+        "model_invocation": make_not_invoked(),
+        "deterministic_selector": make_selector_metadata(),
+    }
+
+
+def record_b_stub_kwargs(**over: Any) -> dict[str, Any]:
+    kwargs = record_b_kwargs(**_stub_selection_overrides())
+    kwargs.update(over)
+    return kwargs
+
+
+def record_c_stub_kwargs(**over: Any) -> dict[str, Any]:
+    kwargs = record_c_kwargs(**_stub_selection_overrides())
     kwargs.update(over)
     return kwargs

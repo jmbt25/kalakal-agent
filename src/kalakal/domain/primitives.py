@@ -126,7 +126,11 @@ RunMode = Literal["fixture"]
 PolicyOutcome = Literal["proceed", "no_bet"]
 ExplanationSource = Literal["agent", "orchestrator"]
 InvocationStatus = Literal["invoked", "not_invoked"]
-AbstentionSource = Literal["agent", "orchestrator"]
+# Source attribution is owned by the application/record layer (§6.2.10),
+# never asserted by model output. "deterministic_stub" names the test-only
+# deterministic selector composition (§5.10) — a no-model path.
+AbstentionSource = Literal["agent", "orchestrator", "deterministic_stub"]
+SelectionSource = Literal["agent", "deterministic_stub"]
 TerminalOutcome = Literal["completed", "abstained"]
 ConfidenceQualifier = Literal["low", "medium", "high"]
 FactorDirection = Literal["supports", "opposes", "neutral"]
