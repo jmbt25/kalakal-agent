@@ -1,0 +1,113 @@
+{
+  "schema_version": "1",
+  "scenario_id": "stale-data",
+  "description": "Synthetic stale-data case: structurally valid, complete, internally ordered timestamps and a successful estimate on the no side (probability 600000 ppm), but the market snapshot's valid_until precedes the scenario evaluation time, so the policy engine is expected to return a stale-data no-bet in a later slice. Staleness never affects pre-agent eligibility.",
+  "evaluation_time": "2026-08-06T10:00:00Z",
+  "expected_outcome_class": "policy_no_bet",
+  "expected_reason_code": "POLICY_STALE_DATA",
+  "fee_rate_ppm": 10000,
+  "fee_model_version": "synthetic-fee-1",
+  "candidates": [
+    {
+      "evaluation_side": "no",
+      "candidate_market": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-stale-data-01",
+        "event_name": "Synthetica Masters 2026 - Quarterfinal C",
+        "series_description": "Ivory Salamanders vs Onyx Harpies, best-of-3 quarterfinal",
+        "yes_means": "Ivory Salamanders win the series",
+        "no_means": "Onyx Harpies win the series",
+        "status": "open",
+        "market_link": "https://markets.kalakal.invalid/syn-mkt-stale-data-01",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "a867c1b704b707c9ed57feb088cb4dea6a13810bb7edbbb2a7b5343cf472cbf2",
+          "is_synthetic": true
+        }
+      },
+      "match_context": {
+        "schema_version": "1",
+        "match_id": "syn-match-stale-data-01",
+        "market_id": "syn-mkt-stale-data-01",
+        "yes_team_name": "Ivory Salamanders",
+        "no_team_name": "Onyx Harpies",
+        "best_of": 3,
+        "tournament_name": "Synthetica Masters 2026",
+        "tournament_tier": "synthetic-tier-1",
+        "rosters": [
+          {
+            "team_name": "Ivory Salamanders",
+            "player_handle": "syn-is-carry"
+          },
+          {
+            "team_name": "Ivory Salamanders",
+            "player_handle": "syn-is-mid"
+          },
+          {
+            "team_name": "Onyx Harpies",
+            "player_handle": "syn-oh-carry"
+          },
+          {
+            "team_name": "Onyx Harpies",
+            "player_handle": "syn-oh-mid"
+          }
+        ],
+        "patch_label": "7.99-syn",
+        "scheduled_start": "2026-08-06T12:00:00Z",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "yes_team_rating": 380,
+        "yes_team_form": 20,
+        "no_team_rating": 580,
+        "no_team_form": 20,
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "f48975cdad7203a57790af99abda2b06fed210ade653c956f1dd50e141d2e17f",
+          "is_synthetic": true
+        }
+      },
+      "market_snapshot": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-stale-data-01",
+        "side": "no",
+        "ask_price_micro": 500000,
+        "bid_price_micro": 490000,
+        "liquidity_hint_micro": 2500000,
+        "captured_at": "2026-08-06T08:00:00Z",
+        "valid_until": "2026-08-06T09:00:00Z",
+        "fee_model_version": "synthetic-fee-1",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "5e5d77d14111ec1569be9e19f7f7cfda04bf59804120a3ef245297167e7b4da1",
+          "is_synthetic": true
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+    "fixture_set_version": "2026.08.06.1",
+    "content_digest": "078c97081ef47fe41125c09ce234ca66239e47395f396ff8a73af471ba91f6f9",
+    "is_synthetic": true
+  }
+}

@@ -1,0 +1,225 @@
+{
+  "schema_version": "1",
+  "scenario_id": "no-valid-candidates",
+  "description": "Synthetic no-valid-candidates case: two open candidates, one with a declared missing estimator input (yes_team_rating) and one with a typed conflict on an estimator input (no_team_form). The estimator returns typed rejections for both, no candidate is eligible, and the orchestrator is expected to abstain before any model invocation in a later slice.",
+  "evaluation_time": "2026-08-06T10:00:00Z",
+  "expected_outcome_class": "orchestrator_abstention",
+  "expected_reason_code": "NO_VALID_CANDIDATES",
+  "fee_rate_ppm": 10000,
+  "fee_model_version": "synthetic-fee-1",
+  "candidates": [
+    {
+      "evaluation_side": "yes",
+      "candidate_market": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-no-valid-candidates-01",
+        "event_name": "Synthetica Masters 2026 - Group Stage A1",
+        "series_description": "Cobalt Djinns vs Russet Gorgons, best-of-3 group match",
+        "yes_means": "Cobalt Djinns win the series",
+        "no_means": "Russet Gorgons win the series",
+        "status": "open",
+        "market_link": "https://markets.kalakal.invalid/syn-mkt-no-valid-candidates-01",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "c0ce7f5559523a001980720b3b268c4224060c6279ee9d9587b3262b2892be5f",
+          "is_synthetic": true
+        }
+      },
+      "match_context": {
+        "schema_version": "1",
+        "match_id": "syn-match-no-valid-candidates-01",
+        "market_id": "syn-mkt-no-valid-candidates-01",
+        "yes_team_name": "Cobalt Djinns",
+        "no_team_name": "Russet Gorgons",
+        "best_of": 3,
+        "tournament_name": "Synthetica Masters 2026",
+        "tournament_tier": "synthetic-tier-1",
+        "rosters": [
+          {
+            "team_name": "Cobalt Djinns",
+            "player_handle": "syn-cd-carry"
+          },
+          {
+            "team_name": "Cobalt Djinns",
+            "player_handle": "syn-cd-mid"
+          },
+          {
+            "team_name": "Russet Gorgons",
+            "player_handle": "syn-rg-carry"
+          },
+          {
+            "team_name": "Russet Gorgons",
+            "player_handle": "syn-rg-mid"
+          }
+        ],
+        "patch_label": "7.99-syn",
+        "scheduled_start": "2026-08-06T12:00:00Z",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "yes_team_rating": null,
+        "yes_team_form": 30,
+        "no_team_rating": 350,
+        "no_team_form": 40,
+        "data_quality": {
+          "is_complete": false,
+          "missing_fields": [
+            "yes_team_rating"
+          ],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "b0e2324a9e12b993d8d6a60b26ea470faf0760a49cee0bd0d834a0efe029c400",
+          "is_synthetic": true
+        }
+      },
+      "market_snapshot": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-no-valid-candidates-01",
+        "side": "yes",
+        "ask_price_micro": 400000,
+        "bid_price_micro": 390000,
+        "liquidity_hint_micro": 2500000,
+        "captured_at": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "fee_model_version": "synthetic-fee-1",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "6f63c6525bd975860f158ce9568e694c30a0ae6472fe9e3b4fc83234d7094ec3",
+          "is_synthetic": true
+        }
+      }
+    },
+    {
+      "evaluation_side": "yes",
+      "candidate_market": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-no-valid-candidates-02",
+        "event_name": "Synthetica Masters 2026 - Group Stage A2",
+        "series_description": "Emerald Naiads vs Slate Ogres, best-of-3 group match",
+        "yes_means": "Emerald Naiads win the series",
+        "no_means": "Slate Ogres win the series",
+        "status": "open",
+        "market_link": "https://markets.kalakal.invalid/syn-mkt-no-valid-candidates-02",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "82b9badbef334cd96463ea0f6be54f20a274d662de8d75807b2c0fb7864b9c4b",
+          "is_synthetic": true
+        }
+      },
+      "match_context": {
+        "schema_version": "1",
+        "match_id": "syn-match-no-valid-candidates-02",
+        "market_id": "syn-mkt-no-valid-candidates-02",
+        "yes_team_name": "Emerald Naiads",
+        "no_team_name": "Slate Ogres",
+        "best_of": 3,
+        "tournament_name": "Synthetica Masters 2026",
+        "tournament_tier": "synthetic-tier-1",
+        "rosters": [
+          {
+            "team_name": "Emerald Naiads",
+            "player_handle": "syn-en-carry"
+          },
+          {
+            "team_name": "Emerald Naiads",
+            "player_handle": "syn-en-mid"
+          },
+          {
+            "team_name": "Slate Ogres",
+            "player_handle": "syn-so-carry"
+          },
+          {
+            "team_name": "Slate Ogres",
+            "player_handle": "syn-so-mid"
+          }
+        ],
+        "patch_label": "7.99-syn",
+        "scheduled_start": "2026-08-06T12:00:00Z",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "yes_team_rating": 520,
+        "yes_team_form": 30,
+        "no_team_rating": 430,
+        "no_team_form": 20,
+        "data_quality": {
+          "is_complete": false,
+          "missing_fields": [],
+          "conflicts": [
+            {
+              "field_path": "no_team_form",
+              "description": "Synthetic sources report contradictory recent form for the no-side team.",
+              "evidence_refs": [
+                {
+                  "kind": "fixture_source",
+                  "ref_id": "kalakal-synthetic-dota-fixtures"
+                },
+                {
+                  "kind": "match",
+                  "ref_id": "syn-match-no-valid-candidates-02"
+                }
+              ]
+            }
+          ]
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "7f946799bea22e8567b06b59e368940bc74241993e30c26094b06e1d609607cc",
+          "is_synthetic": true
+        }
+      },
+      "market_snapshot": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-no-valid-candidates-02",
+        "side": "yes",
+        "ask_price_micro": 450000,
+        "bid_price_micro": 440000,
+        "liquidity_hint_micro": 2500000,
+        "captured_at": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "fee_model_version": "synthetic-fee-1",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "67b0c468c2aad672783d0d8209db9d04f22b417bf415f6848fe4dda047bfefc4",
+          "is_synthetic": true
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+    "fixture_set_version": "2026.08.06.1",
+    "content_digest": "15ec273e635816579574ec274e22c7b654bd37128b58fa680b10d3745976d086",
+    "is_synthetic": true
+  }
+}

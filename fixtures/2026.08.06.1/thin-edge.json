@@ -1,0 +1,113 @@
+{
+  "schema_version": "1",
+  "scenario_id": "thin-edge",
+  "description": "Synthetic thin-edge case: complete, fresh, conflict-free evidence whose deterministic net edge is positive but tiny (probability 555000 ppm, ask 548000 micro, fee 5480 micro, gross edge 7000 ppm, net edge 1520 ppm), intentionally below any plausible minimum-net-edge policy threshold.",
+  "evaluation_time": "2026-08-06T10:00:00Z",
+  "expected_outcome_class": "policy_no_bet",
+  "expected_reason_code": "POLICY_INSUFFICIENT_NET_EDGE",
+  "fee_rate_ppm": 10000,
+  "fee_model_version": "synthetic-fee-1",
+  "candidates": [
+    {
+      "evaluation_side": "yes",
+      "candidate_market": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-thin-edge-01",
+        "event_name": "Synthetica Masters 2026 - Semifinal A",
+        "series_description": "Violet Manticores vs Jade Chimeras, best-of-3 semifinal",
+        "yes_means": "Violet Manticores win the series",
+        "no_means": "Jade Chimeras win the series",
+        "status": "open",
+        "market_link": "https://markets.kalakal.invalid/syn-mkt-thin-edge-01",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "564315135b362d9e793e6e7bce526146694bf2834d6d3afc105212ae985429a0",
+          "is_synthetic": true
+        }
+      },
+      "match_context": {
+        "schema_version": "1",
+        "match_id": "syn-match-thin-edge-01",
+        "market_id": "syn-mkt-thin-edge-01",
+        "yes_team_name": "Violet Manticores",
+        "no_team_name": "Jade Chimeras",
+        "best_of": 3,
+        "tournament_name": "Synthetica Masters 2026",
+        "tournament_tier": "synthetic-tier-1",
+        "rosters": [
+          {
+            "team_name": "Violet Manticores",
+            "player_handle": "syn-vm-carry"
+          },
+          {
+            "team_name": "Violet Manticores",
+            "player_handle": "syn-vm-mid"
+          },
+          {
+            "team_name": "Jade Chimeras",
+            "player_handle": "syn-jc-carry"
+          },
+          {
+            "team_name": "Jade Chimeras",
+            "player_handle": "syn-jc-mid"
+          }
+        ],
+        "patch_label": "7.99-syn",
+        "scheduled_start": "2026-08-06T12:00:00Z",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "yes_team_rating": 500,
+        "yes_team_form": 55,
+        "no_team_rating": 400,
+        "no_team_form": 45,
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "0c29f8a907069b3a3fb9573266a1abd2872a95ee736b8149470acb838892c698",
+          "is_synthetic": true
+        }
+      },
+      "market_snapshot": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-thin-edge-01",
+        "side": "yes",
+        "ask_price_micro": 548000,
+        "bid_price_micro": 545000,
+        "liquidity_hint_micro": 2500000,
+        "captured_at": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "fee_model_version": "synthetic-fee-1",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "7b41acfd16409cf61ba1b303f04c6d3b2ae52013f9f0b0aa718928fe1115b11f",
+          "is_synthetic": true
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+    "fixture_set_version": "2026.08.06.1",
+    "content_digest": "a072f1d0df489beb2d0b461f6764f31b1ced7626985fe33f2c4f475699bc040a",
+    "is_synthetic": true
+  }
+}

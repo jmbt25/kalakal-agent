@@ -1,0 +1,113 @@
+{
+  "schema_version": "1",
+  "scenario_id": "outside-entry-band",
+  "description": "Synthetic outside-entry-band case: complete, fresh, conflict-free evidence and a successful estimate (probability 980000 ppm), but the ask of 950000 micro sits above the configured 100000-900000 entry band while remaining valid under the domain contract; the policy engine is expected to return an outside-entry-band no-bet in a later slice.",
+  "evaluation_time": "2026-08-06T10:00:00Z",
+  "expected_outcome_class": "policy_no_bet",
+  "expected_reason_code": "POLICY_OUTSIDE_ENTRY_BAND",
+  "fee_rate_ppm": 10000,
+  "fee_model_version": "synthetic-fee-1",
+  "candidates": [
+    {
+      "evaluation_side": "yes",
+      "candidate_market": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-outside-entry-band-01",
+        "event_name": "Synthetica Masters 2026 - Quarterfinal D",
+        "series_description": "Gilded Sphinxes vs Ashen Wendigos, best-of-3 quarterfinal",
+        "yes_means": "Gilded Sphinxes win the series",
+        "no_means": "Ashen Wendigos win the series",
+        "status": "open",
+        "market_link": "https://markets.kalakal.invalid/syn-mkt-outside-entry-band-01",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "77d8ce2f280dab031309795c6a174ab7448bf493a807035bb8ad53aa81ff9483",
+          "is_synthetic": true
+        }
+      },
+      "match_context": {
+        "schema_version": "1",
+        "match_id": "syn-match-outside-entry-band-01",
+        "market_id": "syn-mkt-outside-entry-band-01",
+        "yes_team_name": "Gilded Sphinxes",
+        "no_team_name": "Ashen Wendigos",
+        "best_of": 3,
+        "tournament_name": "Synthetica Masters 2026",
+        "tournament_tier": "synthetic-tier-1",
+        "rosters": [
+          {
+            "team_name": "Gilded Sphinxes",
+            "player_handle": "syn-gs-carry"
+          },
+          {
+            "team_name": "Gilded Sphinxes",
+            "player_handle": "syn-gs-mid"
+          },
+          {
+            "team_name": "Ashen Wendigos",
+            "player_handle": "syn-aw-carry"
+          },
+          {
+            "team_name": "Ashen Wendigos",
+            "player_handle": "syn-aw-mid"
+          }
+        ],
+        "patch_label": "7.99-syn",
+        "scheduled_start": "2026-08-06T12:00:00Z",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "yes_team_rating": 900,
+        "yes_team_form": 80,
+        "no_team_rating": 10,
+        "no_team_form": 10,
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "5f37547a5269dda90721f12d54557d31a8e2a0d1261c878f2c531db266c8d4bd",
+          "is_synthetic": true
+        }
+      },
+      "market_snapshot": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-outside-entry-band-01",
+        "side": "yes",
+        "ask_price_micro": 950000,
+        "bid_price_micro": 940000,
+        "liquidity_hint_micro": 2500000,
+        "captured_at": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "fee_model_version": "synthetic-fee-1",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "1342f800216f1e8413498790523e2612a3606e6f8479d9d3df07e95e71076ad9",
+          "is_synthetic": true
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+    "fixture_set_version": "2026.08.06.1",
+    "content_digest": "448972aefb8507054a279936774bb244a718225f0edcba144e0c447886b7280f",
+    "is_synthetic": true
+  }
+}

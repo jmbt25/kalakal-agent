@@ -1,0 +1,31 @@
+{
+  "schema_version": "1",
+  "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+  "fixture_set_version": "2026.08.06.1",
+  "scenarios": {
+    "clear-edge": {
+      "filename": "clear-edge.json",
+      "sha256": "3375802113d084e241ba41e0536784d2bac3734cfe568780b32b349c33f58de7"
+    },
+    "thin-edge": {
+      "filename": "thin-edge.json",
+      "sha256": "de142f90abde203dc01e24eb80458e7b88de5d5034c85591e34df8300ec22f65"
+    },
+    "conflicting-evidence": {
+      "filename": "conflicting-evidence.json",
+      "sha256": "6293216d155fea755e5db2ae37d3580acca52ab2bf4e8009b2a407cead77f7d0"
+    },
+    "stale-data": {
+      "filename": "stale-data.json",
+      "sha256": "fb5ad28a2d24826a8cce7b9cce2b7861cac3988f7efd5a68324d76ea0ce65e14"
+    },
+    "outside-entry-band": {
+      "filename": "outside-entry-band.json",
+      "sha256": "83e813120757502ca684e71e158c6491a2e269c8340279ba0ef4f0679c1276b0"
+    },
+    "no-valid-candidates": {
+      "filename": "no-valid-candidates.json",
+      "sha256": "67e0fdfa9d756ee0d4a72ac75090b679207555a352a6e2864b1213aabac211d9"
+    }
+  }
+}

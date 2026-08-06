@@ -1,0 +1,112 @@
+{
+  "schema_version": "1",
+  "scenario_id": "clear-edge",
+  "description": "Synthetic reference case: complete, fresh, conflict-free evidence with a clearly positive net edge inside the entry band. Reference arithmetic per architecture §6.2.6: probability 650000 ppm, ask 600000 micro, fee 6000 micro, gross edge 50000 ppm, net edge 44000 ppm.",
+  "evaluation_time": "2026-08-06T10:00:00Z",
+  "expected_outcome_class": "completed_proceed",
+  "fee_rate_ppm": 10000,
+  "fee_model_version": "synthetic-fee-1",
+  "candidates": [
+    {
+      "evaluation_side": "yes",
+      "candidate_market": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-clear-edge-01",
+        "event_name": "Synthetica Masters 2026 - Grand Final",
+        "series_description": "Cerulean Wyverns vs Amber Basilisks, best-of-3 grand final",
+        "yes_means": "Cerulean Wyverns win the series",
+        "no_means": "Amber Basilisks win the series",
+        "status": "open",
+        "market_link": "https://markets.kalakal.invalid/syn-mkt-clear-edge-01",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "e130396a463bc746b9544f4bd985caedbfd60a9c8201f29d17cefb224be8223e",
+          "is_synthetic": true
+        }
+      },
+      "match_context": {
+        "schema_version": "1",
+        "match_id": "syn-match-clear-edge-01",
+        "market_id": "syn-mkt-clear-edge-01",
+        "yes_team_name": "Cerulean Wyverns",
+        "no_team_name": "Amber Basilisks",
+        "best_of": 3,
+        "tournament_name": "Synthetica Masters 2026",
+        "tournament_tier": "synthetic-tier-1",
+        "rosters": [
+          {
+            "team_name": "Cerulean Wyverns",
+            "player_handle": "syn-cw-carry"
+          },
+          {
+            "team_name": "Cerulean Wyverns",
+            "player_handle": "syn-cw-mid"
+          },
+          {
+            "team_name": "Amber Basilisks",
+            "player_handle": "syn-ab-carry"
+          },
+          {
+            "team_name": "Amber Basilisks",
+            "player_handle": "syn-ab-mid"
+          }
+        ],
+        "patch_label": "7.99-syn",
+        "scheduled_start": "2026-08-06T12:00:00Z",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "yes_team_rating": 600,
+        "yes_team_form": 50,
+        "no_team_rating": 310,
+        "no_team_form": 40,
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "ab725cc4528a6528f04cb6a94ad0f4444a5f1c75a5b779f3466b8614c618aff1",
+          "is_synthetic": true
+        }
+      },
+      "market_snapshot": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-clear-edge-01",
+        "side": "yes",
+        "ask_price_micro": 600000,
+        "bid_price_micro": 590000,
+        "liquidity_hint_micro": 2500000,
+        "captured_at": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "fee_model_version": "synthetic-fee-1",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "96054932a3832b35deb3926c855be3d96e02f1b003405a13454fb5c8e735273c",
+          "is_synthetic": true
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+    "fixture_set_version": "2026.08.06.1",
+    "content_digest": "882da91a30df898c2e7a597947d8e24653fced4845829cea5b00fb7a32456e1d",
+    "is_synthetic": true
+  }
+}

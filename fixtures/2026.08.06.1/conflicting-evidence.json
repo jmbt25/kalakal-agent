@@ -1,0 +1,128 @@
+{
+  "schema_version": "1",
+  "scenario_id": "conflicting-evidence",
+  "description": "Synthetic conflicting-evidence case: estimator-consumed fields are complete and conflict-free, so estimation succeeds and the candidate stays eligible, but a typed conflict on the non-estimator patch_label evidence is declared; the agent is expected to abstain on conflicting evidence in a later slice.",
+  "evaluation_time": "2026-08-06T10:00:00Z",
+  "expected_outcome_class": "agent_abstention",
+  "expected_reason_code": "CONFLICTING_EVIDENCE",
+  "fee_rate_ppm": 10000,
+  "fee_model_version": "synthetic-fee-1",
+  "candidates": [
+    {
+      "evaluation_side": "yes",
+      "candidate_market": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-conflicting-evidence-01",
+        "event_name": "Synthetica Masters 2026 - Semifinal B",
+        "series_description": "Scarlet Gryphons vs Umber Krakens, best-of-3 semifinal",
+        "yes_means": "Scarlet Gryphons win the series",
+        "no_means": "Umber Krakens win the series",
+        "status": "open",
+        "market_link": "https://markets.kalakal.invalid/syn-mkt-conflicting-evidence-01",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "daa45820deecd43d4999ef77fc5bbf2c05fdae752da3c26d9995f4925c2c595d",
+          "is_synthetic": true
+        }
+      },
+      "match_context": {
+        "schema_version": "1",
+        "match_id": "syn-match-conflicting-evidence-01",
+        "market_id": "syn-mkt-conflicting-evidence-01",
+        "yes_team_name": "Scarlet Gryphons",
+        "no_team_name": "Umber Krakens",
+        "best_of": 3,
+        "tournament_name": "Synthetica Masters 2026",
+        "tournament_tier": "synthetic-tier-1",
+        "rosters": [
+          {
+            "team_name": "Scarlet Gryphons",
+            "player_handle": "syn-sg-carry"
+          },
+          {
+            "team_name": "Scarlet Gryphons",
+            "player_handle": "syn-sg-mid"
+          },
+          {
+            "team_name": "Umber Krakens",
+            "player_handle": "syn-uk-carry"
+          },
+          {
+            "team_name": "Umber Krakens",
+            "player_handle": "syn-uk-mid"
+          }
+        ],
+        "patch_label": "7.99-syn",
+        "scheduled_start": "2026-08-06T12:00:00Z",
+        "as_of": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "yes_team_rating": 700,
+        "yes_team_form": 20,
+        "no_team_rating": 260,
+        "no_team_form": 20,
+        "data_quality": {
+          "is_complete": false,
+          "missing_fields": [],
+          "conflicts": [
+            {
+              "field_path": "patch_label",
+              "description": "Synthetic sources disagree on the patch this series will be played on.",
+              "evidence_refs": [
+                {
+                  "kind": "fixture_source",
+                  "ref_id": "kalakal-synthetic-dota-fixtures"
+                },
+                {
+                  "kind": "match",
+                  "ref_id": "syn-match-conflicting-evidence-01"
+                }
+              ]
+            }
+          ]
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "03fcd15e38f33b4634f6561915a5d3567cabc63509982c3c4665e7108093b20d",
+          "is_synthetic": true
+        }
+      },
+      "market_snapshot": {
+        "schema_version": "1",
+        "market_id": "syn-mkt-conflicting-evidence-01",
+        "side": "yes",
+        "ask_price_micro": 640000,
+        "bid_price_micro": 630000,
+        "liquidity_hint_micro": 2500000,
+        "captured_at": "2026-08-06T09:30:00Z",
+        "valid_until": "2026-08-06T11:00:00Z",
+        "fee_model_version": "synthetic-fee-1",
+        "data_quality": {
+          "is_complete": true,
+          "missing_fields": [],
+          "conflicts": []
+        },
+        "provenance": {
+          "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+          "fixture_set_version": "2026.08.06.1",
+          "content_digest": "a8f76e7ffad323d3e17ca932e2a4d8bddefe477477de72e07678efd46792c88e",
+          "is_synthetic": true
+        }
+      }
+    }
+  ],
+  "provenance": {
+    "fixture_set_id": "kalakal-synthetic-dota-fixtures",
+    "fixture_set_version": "2026.08.06.1",
+    "content_digest": "40ad4b081da09bdeabf54a84ac9b0a6d582f63794932caaf27c0ae239730c78e",
+    "is_synthetic": true
+  }
+}
