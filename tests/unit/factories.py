@@ -48,6 +48,7 @@ from kalakal.domain import (
 from kalakal.domain.primitives import MarketSide, RunState
 from kalakal.edge.calculator import calculate_edge
 from kalakal.estimator.demo import DemoEstimator
+from kalakal.policy import PolicyConfig
 
 T0 = datetime(2026, 8, 5, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -367,6 +368,43 @@ def make_policy_decision(decision: str = "proceed", **over: Any) -> PolicyDecisi
     return PolicyDecision(**policy_decision_kwargs(decision, **over))
 
 
+def rebuild_policy_decision(decision: PolicyDecision, **over: Any) -> PolicyDecision:
+    """Reconstruct a Pydantic-valid decision with selected fields replaced.
+
+    Used by adversarial tests: the result passes full model validation, so
+    only exact recomputation (never shape checking) can reject it.
+    """
+    kwargs: dict[str, Any] = {
+        "schema_version": decision.schema_version,
+        "decision": decision.decision,
+        "reason_codes": decision.reason_codes,
+        "checks": decision.checks,
+        "policy_version": decision.policy_version,
+        "evaluated_at": decision.evaluated_at,
+        "inputs_digest": decision.inputs_digest,
+    }
+    kwargs.update(over)
+    return PolicyDecision(**kwargs)
+
+
+def alt_policy_config() -> PolicyConfig:
+    """A distinct valid policy configuration (identical band, laxer edge).
+
+    With the default factory chain it produces the same proceed outcome as
+    the fixture configuration while differing in version, threshold, and
+    provenance — so only exact recomputation against the right
+    configuration can tell the two decisions apart.
+    """
+    return PolicyConfig(
+        policy_version="fixture-policy-2",
+        min_entry_price_micro=100_000,
+        max_entry_price_micro=900_000,
+        min_net_edge_ppm=30_000,
+        entry_band_source="Synthetic alternative entry-band provenance for tests.",
+        min_net_edge_source="Synthetic alternative net-edge provenance for tests.",
+    )
+
+
 def explanation_kwargs(source: str = "agent", **over: Any) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "schema_version": "1",
@@ -465,6 +503,7 @@ def draft_kwargs(**over: Any) -> dict[str, Any]:
         "market_id": MARKET_ID,
         "side": "yes",
         "is_simulation": True,
+        "renderer_version": "fixture-draft-1",
         "simulation_label": SIMULATION_DRAFT_LABEL,
         "event_name": EVENT_NAME,
         "side_meaning": YES_MEANS,

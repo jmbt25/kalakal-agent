@@ -83,6 +83,7 @@ class TestSimulatedDiscordDraft:
             "market_id",
             "side",
             "is_simulation",
+            "renderer_version",
             "simulation_label",
             "event_name",
             "side_meaning",

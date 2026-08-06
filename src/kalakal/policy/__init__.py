@@ -11,6 +11,7 @@ from kalakal.policy.engine import (
     PolicyInputError,
     evaluate_policy,
     policy_inputs_digest,
+    verify_policy_decision,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "evaluate_policy",
     "policy_config_digest",
     "policy_inputs_digest",
+    "verify_policy_decision",
 ]

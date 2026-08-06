@@ -549,7 +549,9 @@ No implementation classes exist in this phase.
   (§6.2.13) only when the test-only deterministic stub selector ran (§5.10);
   `estimator_id`/`estimator_version`, `policy_version`, and
   `fee_model_version` only when the corresponding component ran (terminal shapes,
-  §6.2.10). Fields for components that did not run are absent — never fabricated
+  §6.2.10); the simulated-draft `renderer_version` only when a draft (or a
+  typed stale draft refusal) was rendered (§6.2.9). Fields for components that
+  did not run are absent — never fabricated
   and never filled with dummy values.
 - `idempotency_key` on the run path (§6.2.1, §9.3).
 - Reason codes: closed UPPER_SNAKE enums for abstention and failure.
@@ -682,6 +684,22 @@ is a pure function; the checks independently re-verify completeness (§6.2.12) a
 freshness of the selected market's evidence after selection, trusting no upstream
 stage; `no_bet` is a successful outcome, not an error.
 
+Post-selection consumers never trust a supplied `PolicyDecision` by shape,
+digest, or displayed observations. A shared pure verifier in the policy layer
+(`verify_policy_decision`) re-runs the engine over the recorded evidence, edge,
+configuration, and duplicate-run status at the supplied decision's recorded
+`evaluated_at` and requires exact equality: outcome, reason codes and their
+order, the complete ordered check series with observed values, thresholds, and
+threshold provenance, `policy_version`, `evaluated_at`, and the full recomputed
+`inputs_digest`. Slice 6 orchestration must invoke this verifier before
+explanation assembly, draft assembly, and terminal-record construction; a
+mismatch fails the run safely as a safety-classified policy invariant/contract
+failure (`POLICY_INVARIANT_BREACH`), and is never converted into a no-bet or
+narrated as a valid outcome. The decision-record validator (§6.2.10) does not
+itself re-run the policy engine — this verifier is the recomputation gate, and
+it stays in the policy/application layer so no `domain -> policy` circular
+dependency arises.
+
 #### 6.2.8 DecisionExplanation
 
 The run's narrative explanation, source-aware so the record never implies a model
@@ -710,9 +728,29 @@ leading label `SIMULATION — DO NOT POST`, exact synthetic event + market side,
 synthetic market link (non-resolvable domain), current synthetic ask price, model
 confidence (from the deterministic estimate, labeled non-predictive), estimated
 edge, `#nfa`, `generated_at`, `expires_at` + stale-regeneration warning,
-`is_simulation` (invariant: `true`). Invariants: exactly one draft per
-(run, market, side); generated deterministically from validated contracts so no
-mandatory element can be omitted; the synthetic link intentionally does not use the
+`is_simulation` (invariant: `true`), and `renderer_version` — the versioned
+deterministic renderer configuration that produced the draft, recorded so a
+renderer-configuration change is visible in serialized audit data even when the
+rendered text happens to be unchanged. A typed stale/regeneration refusal
+records the renderer version too, because its regeneration warning is
+renderer-configuration content.
+
+Invariants: exactly one draft per (run, market, side) — an orchestration-owned
+invariant: the slice 5 generator is pure, stateless, and deterministic
+(identical complete inputs reproduce an equal draft, and a stable identity key
+`(run_id, market_id, side)` exists), which is deterministic repeatability, not
+operational idempotency; slice 6 orchestration enforces operational uniqueness
+by memoizing the first generated result per identity, never emitting or
+persisting a second draft for the same identity, and answering a later call
+with changed inputs for an existing identity by returning the original result
+or failing with a typed conflict — never by creating a replacement draft.
+Further invariants: generated deterministically from validated contracts so no
+mandatory element can be omitted; a draft is produced only for a supplied
+`PolicyDecision` that has passed exact-recomputation verification (§6.2.7),
+with the complete estimator basis bound to the considered match context and
+truthful stage-time ordering
+(`estimate.computed_at <= edge.computed_at <= evaluated_at <= generated_at`);
+the synthetic link intentionally does not use the
 real `jup.ag` domain so a simulated draft can never masquerade as a postable call
 (the real-draft rules of CLAUDE.md §8, including the exact `jup.ag` link, bind the
 post-MVP draft generator, not this simulation).

@@ -24,6 +24,7 @@ from kalakal.domain.primitives import (
     StrictTrue,
     SyntheticMarketLink,
     UtcDatetime,
+    VersionStr,
 )
 
 
@@ -35,6 +36,10 @@ class SimulatedDiscordDraft(StrictModel):
     market_id: Identifier
     side: MarketSide
     is_simulation: StrictTrue
+    # The versioned deterministic renderer that produced this draft (§6.2.9):
+    # recorded so a renderer-configuration change is visible in audit data
+    # even when the rendered text happens to be unchanged.
+    renderer_version: VersionStr
     simulation_label: Literal["SIMULATION — DO NOT POST"]
     event_name: ShortText
     side_meaning: ShortText

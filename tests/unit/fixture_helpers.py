@@ -15,7 +15,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
+from kalakal.domain import CandidateEligibility, derive_ineligibility_reasons
 from kalakal.fixtures.digest import fixture_entity_digest
+from kalakal.fixtures.models import ScenarioCandidateBundle
 
 SHIPPED_FIXTURE_SET_ID = "kalakal-synthetic-dota-fixtures"
 SHIPPED_FIXTURE_SET_VERSION = "2026.08.06.1"
@@ -111,3 +113,20 @@ def tamper_manifest(
     manifest = read_json(version_dir / "manifest.json")
     mutate(manifest)
     write_json(version_dir / "manifest.json", manifest)
+
+
+def consideration_from_bundle(
+    bundle: ScenarioCandidateBundle,
+) -> CandidateEligibility:
+    """A considered-candidate evidence bundle with its derived §5.6 result."""
+    reasons = derive_ineligibility_reasons(
+        bundle.candidate_market, bundle.match_context
+    )
+    return CandidateEligibility(
+        market=bundle.candidate_market,
+        match_context=bundle.match_context,
+        market_snapshot=bundle.market_snapshot,
+        evaluation_side=bundle.evaluation_side,
+        eligible=not reasons,
+        ineligibility_reasons=reasons,
+    )

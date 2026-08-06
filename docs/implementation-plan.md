@@ -278,13 +278,31 @@ Standing rules:
   resolving, length caps enforced, and numbers only from deterministic
   contracts; `SimulatedDiscordDraft` contains every mandatory element of
   [architecture.md §6.2.9](architecture.md#629-simulateddiscorddraft) in one
-  message, uses the synthetic link domain, and is produced iff the policy decision
+  message, records the producing `renderer_version` (as does the typed
+  stale-refusal result), uses the synthetic link domain, and is produced iff
+  the policy decision
   is `proceed`; abstention and no-bet runs produce a documented
-  `DecisionExplanation` instead.
+  `DecisionExplanation` instead; every post-selection consumer (the
+  post-selection explanation generator and the draft generator) verifies the
+  supplied `PolicyDecision` by exact recomputation through the shared pure
+  policy verifier (`verify_policy_decision`,
+  [architecture.md §6.2.7](architecture.md#627-policydecision)) with explicit
+  policy-configuration and duplicate-run inputs — never by digest trust or
+  spot-checked observations; draft generation additionally binds the complete
+  estimator basis to the considered match context and enforces truthful
+  stage-time ordering (`estimate.computed_at <= edge.computed_at <=
+  evaluated_at <= generated_at`, equality allowed).
 - **Tests and checks:** template tests asserting each mandatory element's presence
   (label, event + side, synthetic link, ask price, confidence with non-predictive
-  label, edge, `#nfa`, timestamp, expiry warning); one-draft-per-(run, market,
-  side) test; explanation-validation rejection tests, including
+  label, edge, `#nfa`, timestamp, expiry warning, renderer version);
+  deterministic-repeatability and stable-identity-key tests — deterministic
+  repeatability is not operational idempotency, and the operational
+  one-draft-per-(run, market, side) enforcement is slice 6's
+  ([architecture.md §6.2.9](architecture.md#629-simulateddiscorddraft));
+  adversarial exact-policy-verification tests (forged digests, foreign
+  configurations, foreign evidence with matching observations, mismatched
+  duplicate-run status), foreign-estimator-basis rejection tests, and
+  stage-time-inversion tests; explanation-validation rejection tests, including
   source-conditional field mismatches for both `DecisionExplanation` sources;
   orchestrator-template tests covering all three no-model paths
   (`NO_VALID_CANDIDATES`, stub selection, stub abstention).
@@ -357,7 +375,19 @@ Standing rules:
   the hard 60 s deadline on monotonic elapsed, policy checking receiving
   the effective time at its start with `PolicyDecision.evaluated_at`
   recording exactly that value; the
-  stale-during-execution path (§7.7) reachable in a test.
+  stale-during-execution path (§7.7) reachable in a test; the orchestrator
+  owns the §6.2.9 one-draft invariant — draft generation is memoized by the
+  stable identity `(run_id, market_id, side)`, at most one draft is emitted
+  and persisted per identity, and a later attempt with changed inputs for an
+  existing identity returns the original result or fails with a typed
+  conflict, never a replacement draft; before explanation assembly, draft
+  assembly, and terminal-record construction the orchestrator invokes the
+  shared exact policy verifier (`verify_policy_decision`,
+  [architecture.md §6.2.7](architecture.md#627-policydecision)) with the
+  recorded evidence, edge, policy configuration, and duplicate-run status —
+  a mismatch fails the run safely as a safety-classified
+  `POLICY_INVARIANT_BREACH` `RunFailure`, never a no-bet and never a
+  narrated valid outcome.
 - **Tests and checks:** state-machine transition tests (allowed + rejected
   transitions); per-scenario end-to-end tests asserting the truthful
   stub-source records above; eligibility-filter tests (mixed
@@ -369,7 +399,14 @@ Standing rules:
   and a zero-advance run evaluating every step at exactly the supplied
   `evaluation_time` (shipped fixture outcomes reproducible); timeout test
   with a fake clock;
-  idempotent memoization test (one recorded computation per market); an
+  idempotent memoization test (one recorded computation per market);
+  one-draft idempotency tests — a repeated call for the same
+  `(run_id, market_id, side)` identity returns the memoized first draft, and
+  a call with changed inputs for an existing identity returns the original
+  result or fails with a typed conflict, never a second draft; an
+  exact-policy-verification test — a tampered or foreign `PolicyDecision`
+  fails the run as a safety-classified `POLICY_INVARIANT_BREACH`, never a
+  no-bet; an
   oracle-independence test proving the stub's input surface excludes the
   scenario oracle fields.
 - **Explicit exclusions:** no ADK, no Vertex, no Firestore, no HTTP; the

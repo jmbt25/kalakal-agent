@@ -299,6 +299,52 @@ def evaluate_policy(
     )
 
 
+def verify_policy_decision(
+    *,
+    decision: PolicyDecision,
+    candidate: CandidateMarket,
+    match_context: MatchContext,
+    snapshot: MarketSnapshot,
+    edge: EdgeAssessment,
+    config: PolicyConfig,
+    is_duplicate_run: bool,
+) -> None:
+    """Verify ``decision`` by exact recomputation, or raise ``PolicyInputError``.
+
+    Re-runs :func:`evaluate_policy` over the supplied evidence, edge,
+    configuration, and duplicate-run status at the supplied decision's own
+    recorded ``evaluated_at``, and requires exact equality with the
+    recomputed result: outcome, reason codes and their order, the complete
+    ordered check series with observed values, thresholds, and threshold
+    provenance, ``policy_version``, ``evaluated_at``, and the full
+    recomputed ``inputs_digest``. A caller-supplied digest is never trusted
+    without recomputation, and matching displayed observations are never
+    treated as sufficient.
+
+    Pure like the engine itself: no clock lookup, no I/O, no environment
+    reads, no mutation. Slice 6 orchestration must call this before
+    explanation assembly, draft assembly, and terminal-record construction;
+    a mismatch is a policy invariant/contract failure (safety-classified,
+    e.g. ``POLICY_INVARIANT_BREACH``), never a no-bet.
+    """
+    if not isinstance(decision, PolicyDecision):
+        raise PolicyInputError("decision must be a PolicyDecision instance")
+    recomputed = evaluate_policy(
+        candidate=candidate,
+        match_context=match_context,
+        snapshot=snapshot,
+        edge=edge,
+        evaluated_at=decision.evaluated_at,
+        config=config,
+        is_duplicate_run=is_duplicate_run,
+    )
+    if decision != recomputed:
+        raise PolicyInputError(
+            "supplied policy decision does not equal the exact recomputed "
+            "policy result for the supplied evidence and configuration"
+        )
+
+
 def _completeness_check(check_id: str, quality: DataQuality) -> PolicyCheck:
     observed = 1 if quality.is_complete else 0
     return PolicyCheck(
